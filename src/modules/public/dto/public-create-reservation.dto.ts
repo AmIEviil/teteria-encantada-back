@@ -1,10 +1,9 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
-  IsEmail,
   IsArray,
+  IsEmail,
   IsDate,
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -13,40 +12,30 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { ReservationStatus } from '../entities/reservation.entity';
 
 const PHONE_PATTERN = /^(?=.*\d)[0-9+()\s-]{7,25}$/;
 
-export class UpdateReservationDto {
-  @IsOptional()
+export class PublicCreateReservationDto {
   @IsUUID()
-  tableId?: string;
+  tableId: string;
 
-  @IsOptional()
   @Type(() => Date)
   @IsDate()
-  reservedFor?: Date;
+  reservedFor: Date;
 
-  @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  waitingUntil?: Date;
-
-  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  peopleCount?: number;
+  peopleCount: number;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
   holderName?: string;
 
-  @IsOptional()
   @IsEmail()
   @MaxLength(160)
-  email?: string;
+  email: string;
 
   @IsOptional()
   @IsString()
@@ -65,8 +54,4 @@ export class UpdateReservationDto {
   @IsString()
   @MaxLength(600)
   notes?: string;
-
-  @IsOptional()
-  @IsEnum(ReservationStatus)
-  status?: ReservationStatus;
 }

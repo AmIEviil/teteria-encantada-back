@@ -42,6 +42,12 @@ export class Reservation {
   @Column({ type: 'varchar', length: 120, nullable: true })
   holderName: string | null;
 
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  email: string | null;
+
+  @Column({ type: 'varchar', length: 25, nullable: true })
+  phone: string | null;
+
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   guestNames: string[];
 

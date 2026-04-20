@@ -7,11 +7,14 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { GetReservationsDto } from './dto/get-reservations.dto';
+import { UpdateReservationScheduleDto } from './dto/update-reservation-schedule.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { ReservationWeeklySchedule } from './entities/reservation-weekly-schedule.entity';
 import { Reservation } from './entities/reservation.entity';
 import { SYSTEM_ROLES } from '../auth/constants/system-roles.constant';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -27,6 +30,20 @@ export class ReservationsController {
     @Body() createReservationDto: CreateReservationDto,
   ): Promise<Reservation> {
     return this.reservationsService.create(createReservationDto);
+  }
+
+  @Get('schedule')
+  findSchedule(): Promise<ReservationWeeklySchedule[]> {
+    return this.reservationsService.getWeeklySchedule();
+  }
+
+  @Put('schedule')
+  updateSchedule(
+    @Body() updateReservationScheduleDto: UpdateReservationScheduleDto,
+  ): Promise<ReservationWeeklySchedule[]> {
+    return this.reservationsService.updateWeeklySchedule(
+      updateReservationScheduleDto,
+    );
   }
 
   @Get()

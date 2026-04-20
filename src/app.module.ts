@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -11,9 +12,11 @@ import { ReservationsModule } from './modules/reservations/reservations.module';
 import { MigrationsModule } from './modules/migrations/migrations.module';
 import { EventsModule } from './modules/events/events.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
+import { PublicModule } from './modules/public/public.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST ?? 'localhost',
@@ -38,10 +41,17 @@ import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
     ReservationsModule,
     EventsModule,
     TrabajadoresModule,
+    PublicModule,
     AuthModule,
     MigrationsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

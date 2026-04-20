@@ -9,19 +9,11 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
-import { ReservationStatus } from '../entities/reservation.entity';
+import { ReservationStatus } from '../../reservations/entities/reservation.entity';
 
 const PHONE_PATTERN = /^(?=.*\d)[0-9+()\s-]{7,25}$/;
 
-export class GetReservationsDto {
-  @IsOptional()
-  @IsUUID()
-  tableId?: string;
-
-  @IsOptional()
-  @IsEnum(ReservationStatus)
-  status?: ReservationStatus;
-
+export class PublicFindReservationsDto {
   @IsOptional()
   @IsEmail()
   @MaxLength(160)
@@ -32,6 +24,14 @@ export class GetReservationsDto {
   @MaxLength(25)
   @Matches(PHONE_PATTERN)
   phone?: string;
+
+  @IsOptional()
+  @IsUUID()
+  tableId?: string;
+
+  @IsOptional()
+  @IsEnum(ReservationStatus)
+  status?: ReservationStatus;
 
   @IsOptional()
   @Type(() => Date)

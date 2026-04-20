@@ -5,9 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
+import { Image } from '../images/entities/image.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { ProductPriceHistory } from './entities/product-price-history.entity';
 import { Product } from './entities/product.entity';
 
 @Injectable()
@@ -15,6 +17,10 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
+    @InjectRepository(Image)
+    private readonly imageRepository: Repository<Image>,
+    @InjectRepository(ProductPriceHistory)
+    private readonly productPriceHistoryRepository: Repository<ProductPriceHistory>,
   ) {}
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
@@ -24,22 +30,64 @@ export class ProductsService {
       createProductDto.maximumQuantity,
     );
 
-    const product = this.productRepository.create({
+    const normalizedImageBase64 = this.normalizeImageBase64(
+      createProductDto.imageBase64,
+    );
+
+    const productPayload = {
       ...createProductDto,
       description: createProductDto.description ?? null,
       isActive: createProductDto.isActive ?? true,
-    });
+      imageId: null,
+    };
+
+    delete productPayload.imageBase64;
+
+    const product = this.productRepository.create(productPayload);
 
     try {
-      return await this.productRepository.save(product);
+      return await this.productRepository.manager.transaction(
+        async (manager) => {
+          const imageRepo = manager.getRepository(Image);
+          const savedProduct = await manager
+            .getRepository(Product)
+            .save(product);
+
+          if (normalizedImageBase64) {
+            const image = await this.createImage(
+              imageRepo,
+              normalizedImageBase64,
+            );
+            savedProduct.imageId = image.id;
+            await manager.getRepository(Product).save(savedProduct);
+          }
+
+          savedProduct.imageBase64 = normalizedImageBase64;
+
+          return savedProduct;
+        },
+      );
     } catch (error) {
       this.handleDatabaseError(error);
     }
   }
 
-  findAll(): Promise<Product[]> {
-    return this.productRepository.find({
+  async findAll(): Promise<Product[]> {
+    const products = await this.productRepository.find({
       order: { createdAt: 'DESC' },
+    });
+
+    const imageMap = await this.findProductImageMap(
+      products
+        .map((product) => product.imageId)
+        .filter((imageId): imageId is string => imageId !== null),
+    );
+
+    return products.map((product) => {
+      return this.withResolvedImage(
+        product,
+        product.imageId ? (imageMap.get(product.imageId) ?? null) : null,
+      );
     });
   }
 
@@ -50,14 +98,40 @@ export class ProductsService {
       throw new NotFoundException(`Producto con id ${id} no encontrado`);
     }
 
-    return product;
+    const image = await this.findImageById(product.imageId);
+
+    const priceHistory = await this.productPriceHistoryRepository.find({
+      where: { productId: product.id },
+      relations: {
+        user: true,
+      },
+      order: { changedAt: 'DESC' },
+    });
+
+    product.priceHistory = priceHistory.map((entry) => {
+      return {
+        id: entry.id,
+        productId: entry.productId,
+        changedBy: this.resolveChangedBy(entry),
+        previousPrice: entry.previousPrice,
+        newPrice: entry.newPrice,
+        changedAt: entry.changedAt,
+      };
+    });
+
+    return this.withResolvedImage(product, image?.imageBase64 ?? null);
   }
 
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
+    updatedByUserId: string,
   ): Promise<Product> {
-    const product = await this.findOne(id);
+    const product = await this.productRepository.findOneBy({ id });
+
+    if (!product) {
+      throw new NotFoundException(`Producto con id ${id} no encontrado`);
+    }
 
     const minimumQuantity =
       updateProductDto.minimumQuantity ?? product.minimumQuantity;
@@ -72,13 +146,77 @@ export class ProductsService {
       maximumQuantity,
     );
 
-    Object.assign(product, {
+    const hasImageBase64Field = Object.hasOwn(updateProductDto, 'imageBase64');
+
+    const existingImage = await this.findImageById(product.imageId);
+
+    const normalizedImageBase64 = hasImageBase64Field
+      ? this.normalizeImageBase64(updateProductDto.imageBase64)
+      : undefined;
+
+    const productPatch = {
       ...updateProductDto,
       description: updateProductDto.description ?? product.description,
-    });
+    };
+
+    delete productPatch.imageBase64;
+
+    const previousPrice = product.price;
+    const nextPrice = updateProductDto.price;
+    const hasPriceChanged =
+      nextPrice !== undefined &&
+      this.normalizePrice(previousPrice) !== this.normalizePrice(nextPrice);
+
+    Object.assign(product, productPatch);
 
     try {
-      return await this.productRepository.save(product);
+      return await this.productRepository.manager.transaction(
+        async (manager) => {
+          const imageRepo = manager.getRepository(Image);
+          const savedProduct = await manager
+            .getRepository(Product)
+            .save(product);
+
+          if (hasImageBase64Field) {
+            if (!normalizedImageBase64) {
+              await this.deleteImageIfExists(imageRepo, savedProduct.imageId);
+              savedProduct.imageId = null;
+            } else if (savedProduct.imageId) {
+              await this.updateImage(
+                imageRepo,
+                savedProduct.imageId,
+                normalizedImageBase64,
+              );
+            } else {
+              const image = await this.createImage(
+                imageRepo,
+                normalizedImageBase64,
+              );
+              savedProduct.imageId = image.id;
+            }
+
+            await manager.getRepository(Product).save(savedProduct);
+          }
+
+          if (hasPriceChanged && nextPrice !== undefined) {
+            const historyRepo = manager.getRepository(ProductPriceHistory);
+            const priceHistory = historyRepo.create({
+              productId: savedProduct.id,
+              userId: updatedByUserId,
+              previousPrice: this.normalizePrice(previousPrice),
+              newPrice: this.normalizePrice(nextPrice),
+            });
+
+            await historyRepo.save(priceHistory);
+          }
+
+          savedProduct.imageBase64 = hasImageBase64Field
+            ? (normalizedImageBase64 ?? null)
+            : (existingImage?.imageBase64 ?? null);
+
+          return savedProduct;
+        },
+      );
     } catch (error) {
       this.handleDatabaseError(error);
     }
@@ -135,5 +273,103 @@ export class ProductsService {
         'La cantidad actual no puede ser mayor que la cantidad maxima',
       );
     }
+  }
+
+  private normalizePrice(value: number): number {
+    return Number(value.toFixed(2));
+  }
+
+  private withResolvedImage(
+    product: Product,
+    imageBase64: string | null,
+  ): Product {
+    product.imageBase64 = imageBase64;
+    return product;
+  }
+
+  private async findProductImageMap(
+    imageIds: string[],
+  ): Promise<Map<string, string>> {
+    if (imageIds.length === 0) {
+      return new Map<string, string>();
+    }
+
+    const images = await this.imageRepository.findBy({
+      id: In(imageIds),
+    });
+
+    return new Map(
+      images.map((image) => {
+        return [image.id, image.imageBase64] as const;
+      }),
+    );
+  }
+
+  private async findImageById(imageId: string | null): Promise<Image | null> {
+    if (!imageId) {
+      return null;
+    }
+
+    return this.imageRepository.findOneBy({ id: imageId });
+  }
+
+  private async createImage(
+    imageRepo: Repository<Image>,
+    imageBase64: string,
+  ): Promise<Image> {
+    const image = imageRepo.create({ imageBase64 });
+    return imageRepo.save(image);
+  }
+
+  private async updateImage(
+    imageRepo: Repository<Image>,
+    imageId: string,
+    imageBase64: string,
+  ): Promise<void> {
+    await imageRepo.update(imageId, { imageBase64 });
+  }
+
+  private async deleteImageIfExists(
+    imageRepo: Repository<Image>,
+    imageId: string | null,
+  ): Promise<void> {
+    if (!imageId) {
+      return;
+    }
+
+    await imageRepo.delete(imageId);
+  }
+
+  private normalizeImageBase64(
+    value: string | null | undefined,
+  ): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = value.trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  private resolveChangedBy(entry: ProductPriceHistory): string {
+    const username = entry.user?.username?.trim();
+    if (username) {
+      return username;
+    }
+
+    const firstName = entry.user?.first_name?.trim() ?? '';
+    const lastName = entry.user?.last_name?.trim() ?? '';
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    if (fullName) {
+      return fullName;
+    }
+
+    return entry.user?.email ?? 'Usuario';
   }
 }

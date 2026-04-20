@@ -25,6 +25,11 @@ export class UpdateProductDto {
   description?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(8_000_000)
+  imageBase64?: string | null;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
