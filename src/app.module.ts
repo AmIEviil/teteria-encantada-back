@@ -1,5 +1,5 @@
-import 'dotenv/config';
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -13,10 +13,11 @@ import { MigrationsModule } from './modules/migrations/migrations.module';
 import { EventsModule } from './modules/events/events.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
 import { PublicModule } from './modules/public/public.module';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
+    	ThrottlerModule.forRoot({ ttl: 900000, limit: 5 } as any),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST ?? 'localhost',

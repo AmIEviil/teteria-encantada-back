@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { SYSTEM_ROLES } from './constants/system-roles.constant';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -16,6 +16,7 @@ import {
   PublicUser,
 } from './auth.service';
 import { AuthUser } from './interfaces/auth-user.interface';
+import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
