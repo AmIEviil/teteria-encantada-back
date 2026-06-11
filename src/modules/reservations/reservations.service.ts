@@ -27,7 +27,12 @@ import {
 } from './dto/update-reservation-schedule.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 import { ReservationWeeklySchedule } from './entities/reservation-weekly-schedule.entity';
-import { Reservation, ReservationStatus } from './entities/reservation.entity';
+import {
+  Reservation,
+  ReservationStatus,
+  ReservationConfirmationStatus,
+} from './entities/reservation.entity';
+import type { ConfirmationDecision } from '../whatsapp/utils/reply-parser';
 
 @Injectable()
 export class ReservationsService {
@@ -354,6 +359,31 @@ export class ReservationsService {
     this.logger.log(
       `Se cancelaron ${reservationsToCancel.length} reservas por no-show (sin orden asociada).`,
     );
+  }
+
+  async applyConfirmationDecision(
+    reservationId: string,
+    decision: Exclude<ConfirmationDecision, 'UNKNOWN'>,
+  ): Promise<{ tableId: string }> {
+    const reservation = await this.findOne(reservationId);
+
+    reservation.confirmationRespondedAt = new Date();
+
+    if (decision === 'CONFIRM') {
+      reservation.confirmationStatus = ReservationConfirmationStatus.CONFIRMED;
+    } else {
+      reservation.confirmationStatus = ReservationConfirmationStatus.DECLINED;
+      reservation.status = ReservationStatus.CANCELLED;
+    }
+
+    const saved = await this.reservationRepository.save(reservation);
+    await this.syncTableOperationalStatus(saved.tableId);
+
+    return { tableId: saved.tableId };
+  }
+
+  async recomputeTableStatus(tableId: string): Promise<void> {
+    await this.syncTableOperationalStatus(tableId);
   }
 
   private async ensureDefaultWeeklySchedule(): Promise<void> {
