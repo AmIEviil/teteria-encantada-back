@@ -14,6 +14,8 @@ import { EventsModule } from './modules/events/events.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
 import { PublicModule } from './modules/public/public.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -45,6 +47,9 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     PublicModule,
     AuthModule,
     MigrationsModule,
+    ScheduleModule.forRoot(),
+    WhatsappModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [
