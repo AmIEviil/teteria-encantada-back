@@ -19,7 +19,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
-    	ThrottlerModule.forRoot({ ttl: 900000, limit: 5 } as any),
+    ThrottlerModule.forRoot([{ ttl: 900000, limit: 5 }]),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST ?? 'localhost',
