@@ -15,6 +15,14 @@ export enum ReservationStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export enum ReservationConfirmationStatus {
+  NOT_SENT = 'NOT_SENT',
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  DECLINED = 'DECLINED',
+  NO_RESPONSE = 'NO_RESPONSE',
+}
+
 @Entity('reservations')
 export class Reservation {
   @PrimaryGeneratedColumn('uuid')
@@ -60,6 +68,19 @@ export class Reservation {
     default: ReservationStatus.ACTIVE,
   })
   status: ReservationStatus;
+
+  @Column({
+    type: 'enum',
+    enum: ReservationConfirmationStatus,
+    default: ReservationConfirmationStatus.NOT_SENT,
+  })
+  confirmationStatus: ReservationConfirmationStatus;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  confirmationSentAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  confirmationRespondedAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
