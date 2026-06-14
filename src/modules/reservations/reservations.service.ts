@@ -57,13 +57,14 @@ export class ReservationsService {
   private static readonly MAX_ADVANCE_RESERVATION_MONTHS = 6;
   private static readonly NO_SHOW_CANCELLATION_MINUTES = 30;
 
-  private static readonly SCHEDULE_TIME_PATTERN =
-    /^([01]\d|2[0-3]):([0-5]\d)$/;
+  private static readonly SCHEDULE_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
   async create(
     createReservationDto: CreateReservationDto,
   ): Promise<Reservation> {
-    await this.ensureReservationWithinSchedule(createReservationDto.reservedFor);
+    await this.ensureReservationWithinSchedule(
+      createReservationDto.reservedFor,
+    );
 
     const table = await this.validateTableExists(createReservationDto.tableId);
 
@@ -183,7 +184,9 @@ export class ReservationsService {
     }
 
     if (updateReservationDto.reservedFor !== undefined) {
-      await this.ensureReservationWithinSchedule(updateReservationDto.reservedFor);
+      await this.ensureReservationWithinSchedule(
+        updateReservationDto.reservedFor,
+      );
       reservation.reservedFor = updateReservationDto.reservedFor;
 
       if (updateReservationDto.waitingUntil === undefined) {
@@ -202,7 +205,8 @@ export class ReservationsService {
     }
 
     if (updateReservationDto.email !== undefined) {
-      reservation.email = updateReservationDto.email?.trim().toLowerCase() || null;
+      reservation.email =
+        updateReservationDto.email?.trim().toLowerCase() || null;
     }
 
     if (updateReservationDto.phone !== undefined) {
@@ -287,8 +291,7 @@ export class ReservationsService {
   @Cron(CronExpression.EVERY_MINUTE)
   async cancelNoShowReservationsWithoutOrders(): Promise<void> {
     const cutoff = new Date(
-      Date.now() -
-        ReservationsService.NO_SHOW_CANCELLATION_MINUTES * 60 * 1000,
+      Date.now() - ReservationsService.NO_SHOW_CANCELLATION_MINUTES * 60 * 1000,
     );
 
     const candidateReservations = await this.reservationRepository.find({
@@ -345,10 +348,16 @@ export class ReservationsService {
       { status: ReservationStatus.CANCELLED },
     );
 
-    const affectedTableIds = [...new Set(reservationsToCancel.map((reservation) => reservation.tableId))];
+    const affectedTableIds = [
+      ...new Set(
+        reservationsToCancel.map((reservation) => reservation.tableId),
+      ),
+    ];
 
     await Promise.all(
-      affectedTableIds.map((tableId) => this.syncTableOperationalStatus(tableId)),
+      affectedTableIds.map((tableId) =>
+        this.syncTableOperationalStatus(tableId),
+      ),
     );
 
     this.logger.log(
@@ -375,7 +384,9 @@ export class ReservationsService {
     await this.reservationScheduleRepository.save(defaultSchedules);
   }
 
-  private async ensureReservationWithinSchedule(reservedFor: Date): Promise<void> {
+  private async ensureReservationWithinSchedule(
+    reservedFor: Date,
+  ): Promise<void> {
     await this.ensureDefaultWeeklySchedule();
     this.ensureReservationAdvanceWindow(reservedFor);
 
@@ -401,9 +412,7 @@ export class ReservationsService {
     const reservationMinutes =
       reservedFor.getHours() * 60 + reservedFor.getMinutes();
 
-    if (
-      reservationMinutes < ReservationsService.MIN_SERVICE_START_MINUTES
-    ) {
+    if (reservationMinutes < ReservationsService.MIN_SERVICE_START_MINUTES) {
       throw new BadRequestException(
         'No hay atencion para reservas antes de las 10:00',
       );
@@ -434,9 +443,7 @@ export class ReservationsService {
     }
   }
 
-  private normalizeScheduleDay(
-    scheduleDay: UpdateReservationScheduleDayDto,
-  ): {
+  private normalizeScheduleDay(scheduleDay: UpdateReservationScheduleDayDto): {
     isOpen: boolean;
     opensAt: string | null;
     closesAt: string | null;
@@ -483,7 +490,8 @@ export class ReservationsService {
     }
 
     if (
-      (closeMinutes - openMinutes) % ReservationsService.SLOT_INTERVAL_MINUTES !==
+      (closeMinutes - openMinutes) %
+        ReservationsService.SLOT_INTERVAL_MINUTES !==
       0
     ) {
       throw new BadRequestException(

@@ -158,7 +158,10 @@ export class EventsService {
                   ticketType.includesDetails,
                 ),
                 menuMode: menuConfig.menuMode,
-                menuTemplate: menuConfig.menuTemplate as Record<string, unknown> | null,
+                menuTemplate: menuConfig.menuTemplate as Record<
+                  string,
+                  unknown
+                > | null,
                 totalStock: ticketType.totalStock ?? null,
                 dailyStocks: this.mapDailyStocks(ticketType.dailyStocks),
                 isPromotional: promotion.isPromotional,
@@ -334,7 +337,10 @@ export class EventsService {
                 ticketType.includesDetails,
               ),
               menuMode: menuConfig.menuMode,
-              menuTemplate: menuConfig.menuTemplate as Record<string, unknown> | null,
+              menuTemplate: menuConfig.menuTemplate as Record<
+                string,
+                unknown
+              > | null,
               totalStock: ticketType.totalStock ?? null,
               dailyStocks: this.mapDailyStocks(ticketType.dailyStocks),
               isPromotional: promotion.isPromotional,
@@ -402,7 +408,12 @@ export class EventsService {
     this.assertAttendanceDateInsideEvent(attendanceDate, event);
     this.assertEventCapacityAvailable(event, true, quantity);
 
-    await this.ensureAvailability(ticketType, attendanceDate, undefined, quantity);
+    await this.ensureAvailability(
+      ticketType,
+      attendanceDate,
+      undefined,
+      quantity,
+    );
 
     const basePrice = createEventTicketDto.price ?? ticketType.price;
     const unitPrices = this.buildTicketUnitPrices(
@@ -533,8 +544,7 @@ export class EventsService {
       targetTicketType,
       updateEventTicketDto.menuSelection ?? fallbackMenuSelection,
     );
-    const currentBasePrice =
-      ticket.price - Number(ticket.menuExtraPrice ?? 0);
+    const currentBasePrice = ticket.price - Number(ticket.menuExtraPrice ?? 0);
     const nextBasePrice =
       updateEventTicketDto.price ??
       (isChangingTicketType ? targetTicketType.price : currentBasePrice);
@@ -570,10 +580,7 @@ export class EventsService {
         string,
         unknown
       > | null,
-      menuSelectionSnapshot: menuSelectionResult.snapshot as Record<
-        string,
-        unknown
-      >,
+      menuSelectionSnapshot: menuSelectionResult.snapshot,
       menuExtraPrice: menuSelectionResult.snapshot.totalExtraPrice,
       status: targetStatus,
     });
@@ -870,7 +877,10 @@ export class EventsService {
     const menuMode = ticketType.menuMode ?? EventTicketMenuMode.FIXED;
 
     if (menuMode === EventTicketMenuMode.FIXED) {
-      if (ticketType.menuTemplate !== undefined && ticketType.menuTemplate !== null) {
+      if (
+        ticketType.menuTemplate !== undefined &&
+        ticketType.menuTemplate !== null
+      ) {
         throw new BadRequestException(
           `El ticket "${ticketType.name}" es de menu fijo y no puede incluir plantilla de menu`,
         );
@@ -884,7 +894,10 @@ export class EventsService {
 
     return {
       menuMode,
-      menuTemplate: this.normalizeMenuTemplate(ticketType.menuTemplate, ticketType.name),
+      menuTemplate: this.normalizeMenuTemplate(
+        ticketType.menuTemplate,
+        ticketType.name,
+      ),
     };
   }
 

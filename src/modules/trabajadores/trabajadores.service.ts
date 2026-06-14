@@ -96,9 +96,12 @@ export class TrabajadoresService {
     }
 
     if (filters.lastName?.trim()) {
-      queryBuilder.andWhere('LOWER(COALESCE(user.last_name, \'\')) LIKE LOWER(:lastName)', {
-        lastName: `%${filters.lastName.trim()}%`,
-      });
+      queryBuilder.andWhere(
+        "LOWER(COALESCE(user.last_name, '')) LIKE LOWER(:lastName)",
+        {
+          lastName: `%${filters.lastName.trim()}%`,
+        },
+      );
     }
 
     if (filters.createdFrom?.trim()) {
@@ -113,7 +116,10 @@ export class TrabajadoresService {
       });
     }
 
-    const [users, totalItems] = await queryBuilder.skip(skip).take(limit).getManyAndCount();
+    const [users, totalItems] = await queryBuilder
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
 
     const userIds = users.map((user) => user.id);
     const trabajadores =
@@ -141,7 +147,9 @@ export class TrabajadoresService {
     };
   }
 
-  async create(createTrabajadorDto: CreateTrabajadorDto): Promise<PublicTrabajador> {
+  async create(
+    createTrabajadorDto: CreateTrabajadorDto,
+  ): Promise<PublicTrabajador> {
     const user = await this.userRepository.findOne({
       where: { id: createTrabajadorDto.userId },
       relations: { role: true },
@@ -157,7 +165,9 @@ export class TrabajadoresService {
     });
 
     if (existingTrabajador) {
-      throw new ConflictException('Ese usuario ya tiene un trabajador asociado');
+      throw new ConflictException(
+        'Ese usuario ya tiene un trabajador asociado',
+      );
     }
 
     const rutExists = await this.trabajadorRepository.findOneBy({
@@ -265,7 +275,9 @@ export class TrabajadoresService {
     trabajador?: Trabajador | null,
   ): PublicEmpleadoUser {
     const hasTrabajador =
-      trabajador && typeof trabajador.id === 'string' && trabajador.id.length > 0;
+      trabajador &&
+      typeof trabajador.id === 'string' &&
+      trabajador.id.length > 0;
 
     const trabajadorPublico = hasTrabajador
       ? this.toPublicTrabajador(trabajador)
