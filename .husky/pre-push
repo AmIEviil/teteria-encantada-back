@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Antes de cualquier push: lint + build para no subir errores.
+echo "[pre-push] 1/2 lint..."
+npm run lint:check || { echo "[pre-push] lint fallo, push abortado."; exit 1; }
+
+echo "[pre-push] 2/2 build..."
+npm run build || { echo "[pre-push] build fallo, push abortado."; exit 1; }
+
+echo "[pre-push] OK."
