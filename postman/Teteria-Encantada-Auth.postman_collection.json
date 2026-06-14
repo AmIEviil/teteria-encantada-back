@@ -1,0 +1,141 @@
+{
+  "info": {
+    "name": "Teteria Encantada - Auth",
+    "description": "Login + creacion de usuario (rol Superadmin). El login guarda el accessToken en la variable de coleccion {{accessToken}} automaticamente.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Login (Superadmin seed)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const res = pm.response.json();",
+              "if (res.accessToken) {",
+              "  pm.collectionVariables.set('accessToken', res.accessToken);",
+              "  console.log('accessToken guardado en variable de coleccion');",
+              "}",
+              "pm.test('status 200/201', function () {",
+              "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              "pm.test('devuelve accessToken', function () {",
+              "  pm.expect(res).to.have.property('accessToken');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"superadmin\",\n  \"password\": \"Teteria123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2. Crear usuario Superadmin",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200/201', function () {",
+              "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              "const res = pm.response.json();",
+              "pm.test('rol Superadmin', function () {",
+              "  pm.expect(res.role.name).to.eql('Superadmin');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "users"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"nuevo.super\",\n  \"first_name\": \"Nuevo\",\n  \"last_name\": \"Super\",\n  \"email\": \"nuevo.super@teteria.com\",\n  \"password\": \"Teteria123\",\n  \"roleName\": \"Superadmin\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Extra - Crear usuario Admin",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "users"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"nuevo.admin\",\n  \"first_name\": \"Nuevo\",\n  \"last_name\": \"Admin\",\n  \"email\": \"nuevo.admin@teteria.com\",\n  \"password\": \"Teteria123\",\n  \"roleName\": \"Admin\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Extra - Listar roles (publico)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/roles",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "roles"]
+        }
+      }
+    },
+    {
+      "name": "Extra - Perfil (token actual)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/profile",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "profile"]
+        }
+      }
+    }
+  ]
+}

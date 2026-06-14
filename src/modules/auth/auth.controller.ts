@@ -1,13 +1,11 @@
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
-import { SYSTEM_ROLES } from './constants/system-roles.constant';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from './decorators/public.decorator';
-import { Roles } from './decorators/roles.decorator';
 import {
   AuthResponse,
   AuthService,
@@ -65,8 +63,8 @@ export class AuthController {
   roles(): Promise<PublicRole[]> {
     return this.authService.getRoles();
   }
-
-  @Roles(SYSTEM_ROLES.SUPERADMIN, SYSTEM_ROLES.ADMIN)
+  // @Roles(SYSTEM_ROLES.SUPERADMIN, SYSTEM_ROLES.ADMIN)
+  @Public() // Temporalmente público para permitir la creación de usuarios sin autenticación
   @Post('users')
   createUser(@Body() createUserDto: CreateUserDto): Promise<PublicUser> {
     return this.authService.createUser(createUserDto);
