@@ -43,12 +43,12 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
           script: |
             set -e
             cd "${{ vars.DEPLOY_PATH }}"
-            docker compose -f docker-compose.prod.yml pull backend
-            docker compose -f docker-compose.prod.yml up -d backend
+            docker compose -f docker-compose.yml pull backend
+            docker compose -f docker-compose.yml up -d backend
             docker image prune -f
