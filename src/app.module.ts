@@ -17,7 +17,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
-    	ThrottlerModule.forRoot({ ttl: 900000, limit: 5 } as any),
+    ThrottlerModule.forRoot({ ttl: 900000, limit: 5 } as any),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST ?? 'localhost',
@@ -26,7 +26,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
       password: process.env.DB_PASSWORD ?? '',
       database: process.env.DB_NAME ?? 'TeteriaEncantada',
       autoLoadEntities: true,
-      synchronize: process.env.DB_SYNCHRONIZE !== 'false',
+      synchronize: true,
       // migrationsRun: true,
       extra: {
         max: 10, // <= conexiones máximas por instancia
