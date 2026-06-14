@@ -49,6 +49,6 @@ jobs:
           script: |
             set -e
             cd "${{ vars.DEPLOY_PATH }}"
-            docker compose -f docker-compose.yml pull backend
-            docker compose -f docker-compose.yml up -d backend
+            docker-compose -f docker-compose.yml pull backend
+            docker-compose -f docker-compose.yml up -d backend
             docker image prune -f
