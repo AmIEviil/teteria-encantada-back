@@ -67,6 +67,7 @@ export class AuthController {
 
   // @Roles(SYSTEM_ROLES.SUPERADMIN, SYSTEM_ROLES.ADMIN)
   @Public() // Temporalmente público para permitir la creación de usuarios sin autenticación
+  @Post('users')
   createUser(@Body() createUserDto: CreateUserDto): Promise<PublicUser> {
     return this.authService.createUser(createUserDto);
   }
