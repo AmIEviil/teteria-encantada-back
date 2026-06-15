@@ -35,7 +35,8 @@ describe('WhatsappWebhookService', () => {
   });
 
   it('confirma la reserva y emite señal cuando el cliente responde Sí', async () => {
-    const { reservationRepo, reservationsService, realtimeGateway } = buildDeps();
+    const { reservationRepo, reservationsService, realtimeGateway } =
+      buildDeps();
     const service = new WhatsappWebhookService(
       reservationRepo as never,
       reservationsService as never,
@@ -55,7 +56,8 @@ describe('WhatsappWebhookService', () => {
   });
 
   it('ignora respuestas no interpretables sin tocar la reserva', async () => {
-    const { reservationRepo, reservationsService, realtimeGateway } = buildDeps();
+    const { reservationRepo, reservationsService, realtimeGateway } =
+      buildDeps();
     const service = new WhatsappWebhookService(
       reservationRepo as never,
       reservationsService as never,
@@ -64,7 +66,9 @@ describe('WhatsappWebhookService', () => {
 
     await service.handleIncoming(buildPayload('56999999999', 'quizas'));
 
-    expect(reservationsService.applyConfirmationDecision).not.toHaveBeenCalled();
+    expect(
+      reservationsService.applyConfirmationDecision,
+    ).not.toHaveBeenCalled();
     expect(realtimeGateway.emitReservationsChanged).not.toHaveBeenCalled();
   });
 });

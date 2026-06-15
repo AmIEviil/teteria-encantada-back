@@ -15,6 +15,7 @@ import { PublicModule } from './modules/public/public.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [

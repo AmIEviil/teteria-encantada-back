@@ -1,6 +1,11 @@
 import { ReservationReminderService } from './reservation-reminder.service';
 import { ReservationConfirmationStatus } from '../reservations/entities/reservation.entity';
 
+type SavedReservation = {
+  confirmationStatus: ReservationConfirmationStatus;
+  confirmationSentAt?: Date;
+};
+
 describe('ReservationReminderService', () => {
   const buildDeps = (pending: unknown[] = [], stale: unknown[] = []) => {
     const reservationRepo = {
@@ -8,10 +13,12 @@ describe('ReservationReminderService', () => {
         .fn()
         .mockResolvedValueOnce(pending) // primera llamada: recordatorios
         .mockResolvedValueOnce(stale), // segunda llamada: no-respuesta
-      save: jest.fn().mockImplementation((r) => Promise.resolve(r)),
+      save: jest.fn((r: SavedReservation) => Promise.resolve(r)),
       update: jest.fn().mockResolvedValue({ affected: stale.length }),
     };
-    const whatsappService = { sendReminderTemplate: jest.fn().mockResolvedValue(undefined) };
+    const whatsappService = {
+      sendReminderTemplate: jest.fn().mockResolvedValue(undefined),
+    };
     const realtimeGateway = { emitReservationsChanged: jest.fn() };
     return { reservationRepo, whatsappService, realtimeGateway };
   };
@@ -24,7 +31,9 @@ describe('ReservationReminderService', () => {
       holderName: 'Ana',
       confirmationStatus: ReservationConfirmationStatus.NOT_SENT,
     };
-    const { reservationRepo, whatsappService, realtimeGateway } = buildDeps([reservation]);
+    const { reservationRepo, whatsappService, realtimeGateway } = buildDeps([
+      reservation,
+    ]);
     const service = new ReservationReminderService(
       reservationRepo as never,
       whatsappService as never,
@@ -33,9 +42,14 @@ describe('ReservationReminderService', () => {
 
     await service.sendDueReminders();
 
-    expect(whatsappService.sendReminderTemplate).toHaveBeenCalledWith('+56999999999', 'Ana');
+    expect(whatsappService.sendReminderTemplate).toHaveBeenCalledWith(
+      '+56999999999',
+      'Ana',
+    );
     const saved = reservationRepo.save.mock.calls[0][0];
-    expect(saved.confirmationStatus).toBe(ReservationConfirmationStatus.PENDING);
+    expect(saved.confirmationStatus).toBe(
+      ReservationConfirmationStatus.PENDING,
+    );
     expect(saved.confirmationSentAt).toBeInstanceOf(Date);
     expect(realtimeGateway.emitReservationsChanged).toHaveBeenCalledWith({
       tableId: 'table-1',

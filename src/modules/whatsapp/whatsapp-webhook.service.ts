@@ -83,10 +83,11 @@ export class WhatsappWebhookService {
       return;
     }
 
-    const { tableId } = await this.reservationsService.applyConfirmationDecision(
-      reservation.id,
-      decision,
-    );
+    const { tableId } =
+      await this.reservationsService.applyConfirmationDecision(
+        reservation.id,
+        decision,
+      );
 
     this.realtimeGateway.emitReservationsChanged({
       tableId,

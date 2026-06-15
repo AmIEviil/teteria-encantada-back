@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddReservationConfirmation1780000000000
-  implements MigrationInterface
-{
+export class AddReservationConfirmation1780000000000 implements MigrationInterface {
   name = 'AddReservationConfirmation1780000000000';
 
   // Idempotente: el repo corre con synchronize ON por defecto, así que
@@ -50,8 +48,6 @@ export class AddReservationConfirmation1780000000000
     await queryRunner.query(
       `ALTER TABLE "reservations" DROP COLUMN "confirmationStatus"`,
     );
-    await queryRunner.query(
-      `DROP TYPE "reservations_confirmationstatus_enum"`,
-    );
+    await queryRunner.query(`DROP TYPE "reservations_confirmationstatus_enum"`);
   }
 }

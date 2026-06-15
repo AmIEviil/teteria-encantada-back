@@ -1,13 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  And,
-  In,
-  LessThanOrEqual,
-  MoreThan,
-  Repository,
-} from 'typeorm';
+import { And, In, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 import {
   Reservation,
   ReservationConfirmationStatus,
@@ -15,10 +9,7 @@ import {
 } from '../reservations/entities/reservation.entity';
 import { WhatsappService } from './whatsapp.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import {
-  noResponseCutoff,
-  reminderUpperBound,
-} from './utils/reminder-window';
+import { noResponseCutoff, reminderUpperBound } from './utils/reminder-window';
 
 @Injectable()
 export class ReservationReminderService {
@@ -39,7 +30,10 @@ export class ReservationReminderService {
       where: {
         status: ReservationStatus.ACTIVE,
         confirmationStatus: ReservationConfirmationStatus.NOT_SENT,
-        reservedFor: And(MoreThan(now), LessThanOrEqual(reminderUpperBound(now))),
+        reservedFor: And(
+          MoreThan(now),
+          LessThanOrEqual(reminderUpperBound(now)),
+        ),
       },
     });
 
