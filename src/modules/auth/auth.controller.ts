@@ -15,8 +15,8 @@ import {
 } from './auth.service';
 import { AuthUser } from './interfaces/auth-user.interface';
 import { Body, Controller, Get, Post, Req } from '@nestjs/common';
-import { Roles } from './decorators/roles.decorator';
-import { SYSTEM_ROLES } from './constants/system-roles.constant';
+// import { Roles } from './decorators/roles.decorator';
+// import { SYSTEM_ROLES } from './constants/system-roles.constant';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -65,7 +65,7 @@ export class AuthController {
     return this.authService.getRoles();
   }
 
-  @Roles(SYSTEM_ROLES.SUPERADMIN, SYSTEM_ROLES.ADMIN)
+  // @Roles(SYSTEM_ROLES.SUPERADMIN, SYSTEM_ROLES.ADMIN)
   @Public() // Temporalmente público para permitir la creación de usuarios sin autenticación
   createUser(@Body() createUserDto: CreateUserDto): Promise<PublicUser> {
     return this.authService.createUser(createUserDto);
