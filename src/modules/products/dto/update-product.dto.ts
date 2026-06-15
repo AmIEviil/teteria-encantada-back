@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -25,9 +26,8 @@ export class UpdateProductDto {
   description?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(8_000_000)
-  imageBase64?: string | null;
+  @IsUUID()
+  imageId?: string | null;
 
   @IsOptional()
   @Type(() => Number)

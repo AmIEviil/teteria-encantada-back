@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, QueryFailedError, Repository } from 'typeorm';
 import { Image } from '../images/entities/image.entity';
+import { ImagesService } from '../images/images.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductPriceHistory } from './entities/product-price-history.entity';
@@ -21,6 +22,7 @@ export class ProductsService {
     private readonly imageRepository: Repository<Image>,
     @InjectRepository(ProductPriceHistory)
     private readonly productPriceHistoryRepository: Repository<ProductPriceHistory>,
+    private readonly imagesService: ImagesService,
   ) {}
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
@@ -30,43 +32,16 @@ export class ProductsService {
       createProductDto.maximumQuantity,
     );
 
-    const normalizedImageBase64 = this.normalizeImageBase64(
-      createProductDto.imageBase64,
-    );
-
-    const productPayload = {
+    const product = this.productRepository.create({
       ...createProductDto,
       description: createProductDto.description ?? null,
       isActive: createProductDto.isActive ?? true,
-      imageId: null,
-    };
-
-    delete productPayload.imageBase64;
-
-    const product = this.productRepository.create(productPayload);
+      imageId: createProductDto.imageId ?? null,
+    });
 
     try {
-      return await this.productRepository.manager.transaction(
-        async (manager) => {
-          const imageRepo = manager.getRepository(Image);
-          const savedProduct = await manager
-            .getRepository(Product)
-            .save(product);
-
-          if (normalizedImageBase64) {
-            const image = await this.createImage(
-              imageRepo,
-              normalizedImageBase64,
-            );
-            savedProduct.imageId = image.id;
-            await manager.getRepository(Product).save(savedProduct);
-          }
-
-          savedProduct.imageBase64 = normalizedImageBase64;
-
-          return savedProduct;
-        },
-      );
+      const saved = await this.productRepository.save(product);
+      return this.findOne(saved.id);
     } catch (error) {
       this.handleDatabaseError(error);
     }
@@ -83,12 +58,12 @@ export class ProductsService {
         .filter((imageId): imageId is string => imageId !== null),
     );
 
-    return products.map((product) => {
-      return this.withResolvedImage(
+    return products.map((product) =>
+      this.withResolvedImage(
         product,
         product.imageId ? (imageMap.get(product.imageId) ?? null) : null,
-      );
-    });
+      ),
+    );
   }
 
   async findOne(id: string): Promise<Product> {
@@ -102,24 +77,20 @@ export class ProductsService {
 
     const priceHistory = await this.productPriceHistoryRepository.find({
       where: { productId: product.id },
-      relations: {
-        user: true,
-      },
+      relations: { user: true },
       order: { changedAt: 'DESC' },
     });
 
-    product.priceHistory = priceHistory.map((entry) => {
-      return {
-        id: entry.id,
-        productId: entry.productId,
-        changedBy: this.resolveChangedBy(entry),
-        previousPrice: entry.previousPrice,
-        newPrice: entry.newPrice,
-        changedAt: entry.changedAt,
-      };
-    });
+    product.priceHistory = priceHistory.map((entry) => ({
+      id: entry.id,
+      productId: entry.productId,
+      changedBy: this.resolveChangedBy(entry),
+      previousPrice: entry.previousPrice,
+      newPrice: entry.newPrice,
+      changedAt: entry.changedAt,
+    }));
 
-    return this.withResolvedImage(product, image?.imageBase64 ?? null);
+    return this.withResolvedImage(product, image?.url ?? null);
   }
 
   async update(
@@ -146,20 +117,14 @@ export class ProductsService {
       maximumQuantity,
     );
 
-    const hasImageBase64Field = Object.hasOwn(updateProductDto, 'imageBase64');
-
-    const existingImage = await this.findImageById(product.imageId);
-
-    const normalizedImageBase64 = hasImageBase64Field
-      ? this.normalizeImageBase64(updateProductDto.imageBase64)
-      : undefined;
+    const hasImageField = Object.hasOwn(updateProductDto, 'imageId');
+    const previousImageId = product.imageId;
+    const nextImageId = updateProductDto.imageId ?? null;
 
     const productPatch = {
       ...updateProductDto,
       description: updateProductDto.description ?? product.description,
     };
-
-    delete productPatch.imageBase64;
 
     const previousPrice = product.price;
     const nextPrice = updateProductDto.price;
@@ -169,64 +134,51 @@ export class ProductsService {
 
     Object.assign(product, productPatch);
 
+    if (hasImageField) {
+      product.imageId = nextImageId;
+    }
+
     try {
-      return await this.productRepository.manager.transaction(
-        async (manager) => {
-          const imageRepo = manager.getRepository(Image);
-          const savedProduct = await manager
-            .getRepository(Product)
-            .save(product);
+      const savedProduct = await this.productRepository.save(product);
 
-          if (hasImageBase64Field) {
-            if (!normalizedImageBase64) {
-              await this.deleteImageIfExists(imageRepo, savedProduct.imageId);
-              savedProduct.imageId = null;
-            } else if (savedProduct.imageId) {
-              await this.updateImage(
-                imageRepo,
-                savedProduct.imageId,
-                normalizedImageBase64,
-              );
-            } else {
-              const image = await this.createImage(
-                imageRepo,
-                normalizedImageBase64,
-              );
-              savedProduct.imageId = image.id;
-            }
+      if (hasPriceChanged && nextPrice !== undefined) {
+        const priceHistory = this.productPriceHistoryRepository.create({
+          productId: savedProduct.id,
+          userId: updatedByUserId,
+          previousPrice: this.normalizePrice(previousPrice),
+          newPrice: this.normalizePrice(nextPrice),
+        });
+        await this.productPriceHistoryRepository.save(priceHistory);
+      }
 
-            await manager.getRepository(Product).save(savedProduct);
-          }
+      if (
+        hasImageField &&
+        previousImageId &&
+        previousImageId !== nextImageId
+      ) {
+        await this.imagesService.remove(previousImageId);
+      }
 
-          if (hasPriceChanged && nextPrice !== undefined) {
-            const historyRepo = manager.getRepository(ProductPriceHistory);
-            const priceHistory = historyRepo.create({
-              productId: savedProduct.id,
-              userId: updatedByUserId,
-              previousPrice: this.normalizePrice(previousPrice),
-              newPrice: this.normalizePrice(nextPrice),
-            });
-
-            await historyRepo.save(priceHistory);
-          }
-
-          savedProduct.imageBase64 = hasImageBase64Field
-            ? (normalizedImageBase64 ?? null)
-            : (existingImage?.imageBase64 ?? null);
-
-          return savedProduct;
-        },
-      );
+      return this.findOne(savedProduct.id);
     } catch (error) {
       this.handleDatabaseError(error);
     }
   }
 
   async remove(id: string): Promise<{ message: string }> {
-    const product = await this.findOne(id);
+    const product = await this.productRepository.findOneBy({ id });
+
+    if (!product) {
+      throw new NotFoundException(`Producto con id ${id} no encontrado`);
+    }
+
+    const imageId = product.imageId;
 
     try {
       await this.productRepository.remove(product);
+      if (imageId) {
+        await this.imagesService.remove(imageId);
+      }
       return { message: 'Producto eliminado correctamente' };
     } catch (error) {
       this.handleDatabaseError(error);
@@ -281,9 +233,9 @@ export class ProductsService {
 
   private withResolvedImage(
     product: Product,
-    imageBase64: string | null,
+    imageUrl: string | null,
   ): Product {
-    product.imageBase64 = imageBase64;
+    product.imageUrl = imageUrl;
     return product;
   }
 
@@ -294,66 +246,16 @@ export class ProductsService {
       return new Map<string, string>();
     }
 
-    const images = await this.imageRepository.findBy({
-      id: In(imageIds),
-    });
+    const images = await this.imageRepository.findBy({ id: In(imageIds) });
 
-    return new Map(
-      images.map((image) => {
-        return [image.id, image.imageBase64] as const;
-      }),
-    );
+    return new Map(images.map((image) => [image.id, image.url] as const));
   }
 
   private async findImageById(imageId: string | null): Promise<Image | null> {
     if (!imageId) {
       return null;
     }
-
     return this.imageRepository.findOneBy({ id: imageId });
-  }
-
-  private async createImage(
-    imageRepo: Repository<Image>,
-    imageBase64: string,
-  ): Promise<Image> {
-    const image = imageRepo.create({ imageBase64 });
-    return imageRepo.save(image);
-  }
-
-  private async updateImage(
-    imageRepo: Repository<Image>,
-    imageId: string,
-    imageBase64: string,
-  ): Promise<void> {
-    await imageRepo.update(imageId, { imageBase64 });
-  }
-
-  private async deleteImageIfExists(
-    imageRepo: Repository<Image>,
-    imageId: string | null,
-  ): Promise<void> {
-    if (!imageId) {
-      return;
-    }
-
-    await imageRepo.delete(imageId);
-  }
-
-  private normalizeImageBase64(
-    value: string | null | undefined,
-  ): string | null {
-    if (value === undefined || value === null) {
-      return null;
-    }
-
-    const normalized = value.trim();
-
-    if (!normalized) {
-      return null;
-    }
-
-    return normalized;
   }
 
   private resolveChangedBy(entry: ProductPriceHistory): string {

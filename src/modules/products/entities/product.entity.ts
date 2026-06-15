@@ -68,8 +68,8 @@ export class Product {
   @OneToMany(() => OrderItem, (orderItem) => orderItem.product)
   orderItems: OrderItem[];
 
-  // Non-persistent field used to keep API response backwards-compatible.
-  imageBase64?: string | null;
+  // Non-persistent field: URL pública resuelta desde la relación image.
+  imageUrl?: string | null;
 
   // Non-persistent field used by product detail views.
   priceHistory?: ProductPriceHistorySnapshot[];
