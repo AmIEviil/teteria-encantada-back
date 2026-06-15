@@ -7,6 +7,7 @@ import { LayoutsModule } from './modules/layouts/layouts.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ProductsModule } from './modules/products/products.module';
+import { ImagesModule } from './modules/images/images.module';
 import { ReservationsModule } from './modules/reservations/reservations.module';
 import { MigrationsModule } from './modules/migrations/migrations.module';
 import { EventsModule } from './modules/events/events.module';
@@ -41,6 +42,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         process.env.DB_LOGGING === 'true' ? ['error', 'warn'] : ['error'],
     }),
     ProductsModule,
+    ImagesModule,
     LayoutsModule,
     OrdersModule,
     ReservationsModule,
