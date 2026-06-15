@@ -105,6 +105,7 @@ export class ReservationsService {
     const queryBuilder = this.reservationRepository
       .createQueryBuilder('reservation')
       .leftJoinAndSelect('reservation.table', 'table')
+      .leftJoinAndSelect('reservation.comprobanteImage', 'comprobanteImage')
       .orderBy('reservation.reservedFor', 'ASC')
       .addOrderBy('reservation.createdAt', 'DESC');
 

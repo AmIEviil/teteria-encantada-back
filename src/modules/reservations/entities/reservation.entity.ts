@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Image } from '../../images/entities/image.entity';
 import { RestaurantTable } from '../../layouts/entities/restaurant-table.entity';
 
 export enum ReservationStatus {
@@ -81,6 +82,13 @@ export class Reservation {
 
   @Column({ type: 'timestamptz', nullable: true })
   confirmationRespondedAt: Date | null;
+
+  @Column({ name: 'comprobante_image_id', type: 'uuid', nullable: true })
+  comprobanteImageId: string | null;
+
+  @ManyToOne(() => Image, { nullable: true, eager: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'comprobante_image_id' })
+  comprobanteImage: Image | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
