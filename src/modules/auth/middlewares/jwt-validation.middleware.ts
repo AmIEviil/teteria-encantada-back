@@ -156,6 +156,7 @@ export class JwtValidationMiddleware implements NestMiddleware {
     const publicRoutes = [
       '/auth/login',
       '/auth/register',
+      '/auth/users',
       '/auth/forgot-password',
       '/auth/reset-password',
       '/auth/roles',
@@ -165,6 +166,7 @@ export class JwtValidationMiddleware implements NestMiddleware {
       '/public/reservations/schedule',
       '/api/auth/login',
       '/api/auth/register',
+      '/api/auth/users',
       '/api/auth/forgot-password',
       '/api/auth/reset-password',
       '/api/auth/roles',

@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -19,7 +18,9 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([{ ttl: 900000, limit: 5 }]),
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 100 }],
+    }),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST ?? 'localhost',
@@ -28,7 +29,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
       password: process.env.DB_PASSWORD ?? '',
       database: process.env.DB_NAME ?? 'TeteriaEncantada',
       autoLoadEntities: true,
-      synchronize: process.env.DB_SYNCHRONIZE !== 'false',
+      synchronize: true,
       // migrationsRun: true,
       extra: {
         max: 10, // <= conexiones máximas por instancia

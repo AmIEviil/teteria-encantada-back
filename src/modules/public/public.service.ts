@@ -102,7 +102,9 @@ export class PublicService {
     }
 
     const reservations = await this.reservationsService.findAll(filters);
-    return reservations.map((reservation) => this.toPublicReservation(reservation));
+    return reservations.map((reservation) =>
+      this.toPublicReservation(reservation),
+    );
   }
 
   async findReservationSchedule(): Promise<PublicReservationScheduleItem[]> {
@@ -113,7 +115,8 @@ export class PublicService {
   async createReservation(
     createReservationDto: PublicCreateReservationDto,
   ): Promise<PublicReservationItem> {
-    const reservation = await this.reservationsService.create(createReservationDto);
+    const reservation =
+      await this.reservationsService.create(createReservationDto);
     return this.toPublicReservation(reservation);
   }
 

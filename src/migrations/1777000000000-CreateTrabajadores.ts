@@ -52,8 +52,12 @@ export class CreateTrabajadores1777000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "trabajador_documentos" DROP CONSTRAINT "FK_trabajador_documentos_trabajador_id"`);
-    await queryRunner.query(`ALTER TABLE "trabajadores" DROP CONSTRAINT "FK_trabajadores_user_id"`);
+    await queryRunner.query(
+      `ALTER TABLE "trabajador_documentos" DROP CONSTRAINT "FK_trabajador_documentos_trabajador_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "trabajadores" DROP CONSTRAINT "FK_trabajadores_user_id"`,
+    );
     await queryRunner.query(`DROP TABLE "trabajador_documentos"`);
     await queryRunner.query(`DROP TABLE "trabajadores"`);
   }
