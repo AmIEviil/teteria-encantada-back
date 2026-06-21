@@ -44,6 +44,42 @@ describe('JwtValidationMiddleware', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it('deja pasar /auth/google sin Authorization header', async () => {
+    await middleware.use(
+      makeReq({ originalUrl: '/auth/google' }),
+      {} as never,
+      next,
+    );
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('deja pasar /auth/google/callback sin Authorization header', async () => {
+    await middleware.use(
+      makeReq({ originalUrl: '/auth/google/callback' }),
+      {} as never,
+      next,
+    );
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('deja pasar /api/auth/google sin Authorization header', async () => {
+    await middleware.use(
+      makeReq({ originalUrl: '/api/auth/google' }),
+      {} as never,
+      next,
+    );
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('deja pasar /api/auth/google/callback sin Authorization header', async () => {
+    await middleware.use(
+      makeReq({ originalUrl: '/api/auth/google/callback' }),
+      {} as never,
+      next,
+    );
+    expect(next).toHaveBeenCalled();
+  });
+
   it('deja pasar ruta del sistema', async () => {
     await middleware.use(makeReq({ originalUrl: '/health' }), {} as never, next);
     expect(next).toHaveBeenCalled();
