@@ -22,7 +22,8 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Role } from './entities/role.entity';
-import { User } from './entities/user.entity';
+import { AuthProvider, User } from './entities/user.entity';
+import { GoogleProfileResult } from './strategies/google.strategy';
 import { AuthUser } from './interfaces/auth-user.interface';
 
 export interface PublicRole {
@@ -109,6 +110,40 @@ export class AuthService implements OnModuleInit {
     }
 
     return this.buildAuthResponse(user);
+  }
+
+  async googleLogin(profile: GoogleProfileResult): Promise<AuthResponse> {
+    const email = this.normalizeEmail(profile.email);
+    const existing = await this.userRepository.findOneBy({ email });
+
+    if (existing) {
+      if (!existing.isActive) {
+        throw new UnauthorizedException('La cuenta está inactiva');
+      }
+      if (!existing.googleId) {
+        existing.googleId = profile.googleId;
+        await this.userRepository.save(existing);
+      }
+      return this.buildAuthResponse(existing);
+    }
+
+    const role = await this.resolveRoleByName(SYSTEM_ROLES.CLIENTE);
+    const user = this.userRepository.create({
+      username: null,
+      first_name: profile.firstName.trim(),
+      last_name: profile.lastName?.trim() || null,
+      email,
+      passwordHash: null,
+      provider: AuthProvider.GOOGLE,
+      googleId: profile.googleId,
+      role,
+      roleId: role.id,
+      isActive: true,
+      resetPasswordTokenHash: null,
+      resetPasswordExpiresAt: null,
+    });
+    const saved = await this.userRepository.save(user);
+    return this.buildAuthResponse(saved);
   }
 
   async forgotPassword(

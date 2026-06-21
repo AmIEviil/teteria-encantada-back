@@ -253,6 +253,62 @@ describe('AuthService', () => {
     });
   });
 
+  describe('googleLogin', () => {
+    const profile = {
+      googleId: 'g-1',
+      email: 'cliente@gmail.com',
+      firstName: 'Cliente',
+      lastName: 'Demo',
+    };
+
+    it('vincula googleId a un usuario existente por email', async () => {
+      const existing = buildUser({
+        id: 'u9',
+        email: 'cliente@gmail.com',
+        googleId: null,
+      });
+      userRepo.findOneBy.mockResolvedValueOnce(existing);
+
+      const result = await service.googleLogin(profile);
+
+      expect(userRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'u9', googleId: 'g-1' }),
+      );
+      expect(result.accessToken).toBe('jwt-token');
+      expect(result.user.email).toBe('cliente@gmail.com');
+    });
+
+    it('no re-vincula si el usuario ya tiene googleId', async () => {
+      const existing = buildUser({ email: 'cliente@gmail.com', googleId: 'g-1' });
+      userRepo.findOneBy.mockResolvedValueOnce(existing);
+
+      await service.googleLogin(profile);
+
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('crea usuario Google con rol Cliente si el email no existe', async () => {
+      userRepo.findOneBy.mockResolvedValueOnce(null);
+      roleQb.getOne.mockResolvedValueOnce({
+        id: 'rc',
+        name: 'Cliente',
+        isActive: true,
+      });
+
+      const result = await service.googleLogin(profile);
+
+      expect(userRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'cliente@gmail.com',
+          googleId: 'g-1',
+          passwordHash: null,
+          username: null,
+        }),
+      );
+      expect(result.user.role.name).toBe('Cliente');
+    });
+  });
+
   describe('onModuleInit', () => {
     it('siembra roles faltantes y crea superadmin', async () => {
       roleRepo.find.mockResolvedValue([]); // ninguno existe -> crea todos
