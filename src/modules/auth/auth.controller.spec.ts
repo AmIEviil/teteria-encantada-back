@@ -13,7 +13,9 @@ describe('AuthController', () => {
     getProfile: jest.fn().mockResolvedValue({ id: 'u1' }),
     getRoles: jest.fn().mockResolvedValue([]),
     createUser: jest.fn().mockResolvedValue({ id: 'u1' }),
+    googleLogin: jest.fn(),
   };
+  const authServiceMock = service;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -54,5 +56,31 @@ describe('AuthController', () => {
   it('createUser', async () => {
     await controller.createUser({} as never);
     expect(service.createUser).toHaveBeenCalled();
+  });
+
+  describe('googleCallback', () => {
+    it('redirige al frontend con el token en query', async () => {
+      process.env.FRONTEND_URL = 'http://localhost:5173';
+      authServiceMock.googleLogin.mockResolvedValue({
+        accessToken: 'jwt-xyz',
+        user: { id: 'u1' },
+      });
+      const res = { redirect: jest.fn() } as unknown as import('express').Response;
+      const req = {
+        user: {
+          googleId: 'g-1',
+          email: 'a@gmail.com',
+          firstName: 'A',
+          lastName: null,
+        },
+      } as never;
+
+      await controller.googleCallback(req, res);
+
+      expect(authServiceMock.googleLogin).toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith(
+        'http://localhost:5173/auth/google/callback?token=jwt-xyz',
+      );
+    });
   });
 });

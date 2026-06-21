@@ -14,7 +14,10 @@ import {
   PublicUser,
 } from './auth.service';
 import { AuthUser } from './interfaces/auth-user.interface';
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { Response } from 'express';
+import { GoogleProfileResult } from './strategies/google.strategy';
 // import { Roles } from './decorators/roles.decorator';
 // import { SYSTEM_ROLES } from './constants/system-roles.constant';
 
@@ -70,5 +73,24 @@ export class AuthController {
   @Post('users')
   createUser(@Body() createUserDto: CreateUserDto): Promise<PublicUser> {
     return this.authService.createUser(createUserDto);
+  }
+
+  @Public()
+  @UseGuards(AuthGuard('google'))
+  @Get('google')
+  googleAuth(): void {
+    // El guard redirige a Google; no se ejecuta cuerpo.
+  }
+
+  @Public()
+  @UseGuards(AuthGuard('google'))
+  @Get('google/callback')
+  async googleCallback(
+    @Req() request: Request & { user: GoogleProfileResult },
+    @Res() response: Response,
+  ): Promise<void> {
+    const { accessToken } = await this.authService.googleLogin(request.user);
+    const frontend = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+    response.redirect(`${frontend}/auth/google/callback?token=${accessToken}`);
   }
 }
