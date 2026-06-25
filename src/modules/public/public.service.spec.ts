@@ -72,7 +72,9 @@ describe('PublicService', () => {
         createdAt: new Date(),
       },
     ]);
-    const result = await service.findReservations({ email: 'a@x.com' } as never);
+    const result = await service.findReservations({
+      email: 'a@x.com',
+    } as never);
     expect(result[0].tableCode).toBe('M1');
   });
 

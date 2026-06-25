@@ -15,8 +15,7 @@ describe('ImagesService', () => {
     delete: jest.fn(),
   };
 
-  const buildService = () =>
-    new ImagesService(repo as never, storage as never);
+  const buildService = () => new ImagesService(repo as never, storage as never);
 
   beforeEach(() => {
     jest.resetAllMocks();

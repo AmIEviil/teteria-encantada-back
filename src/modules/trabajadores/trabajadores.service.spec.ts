@@ -203,9 +203,9 @@ describe('TrabajadoresService', () => {
   describe('update', () => {
     it('lanza NotFound', async () => {
       trabajadorRepo.findOne.mockResolvedValue(null);
-      await expect(
-        service.update('x', {} as never),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.update('x', {} as never)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('rechaza RUT en uso por otro', async () => {

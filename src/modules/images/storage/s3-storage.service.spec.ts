@@ -1,8 +1,10 @@
-import { S3StorageService, S3_CLIENT } from './s3-storage.service';
+import { S3StorageService } from './s3-storage.service';
 
 describe('S3StorageService', () => {
   const send = jest.fn();
-  const fakeClient = { send } as unknown as import('@aws-sdk/client-s3').S3Client;
+  const fakeClient = {
+    send,
+  } as unknown as import('@aws-sdk/client-s3').S3Client;
 
   beforeEach(() => {
     send.mockReset();

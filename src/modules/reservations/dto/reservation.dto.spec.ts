@@ -53,7 +53,9 @@ describe('Reservation DTOs', () => {
 
   it('UpdateReservationScheduleDto valido', async () => {
     const dto = plainToInstance(UpdateReservationScheduleDto, {
-      days: [{ dayOfWeek: 1, isOpen: true, opensAt: '10:00', closesAt: '23:00' }],
+      days: [
+        { dayOfWeek: 1, isOpen: true, opensAt: '10:00', closesAt: '23:00' },
+      ],
     });
     expect(await validate(dto)).toHaveLength(0);
   });

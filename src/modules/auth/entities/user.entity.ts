@@ -31,13 +31,24 @@ export class User {
   @Column({ unique: true, length: 180 })
   email: string;
 
-  @Column({ name: 'password_hash', type: 'varchar', length: 120, nullable: true })
+  @Column({
+    name: 'password_hash',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
   passwordHash: string | null;
 
   @Column({ type: 'enum', enum: AuthProvider, default: AuthProvider.LOCAL })
   provider: AuthProvider;
 
-  @Column({ name: 'google_id', type: 'varchar', length: 64, unique: true, nullable: true })
+  @Column({
+    name: 'google_id',
+    type: 'varchar',
+    length: 64,
+    unique: true,
+    nullable: true,
+  })
   googleId: string | null;
 
   @Column({ default: true })

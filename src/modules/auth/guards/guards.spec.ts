@@ -10,7 +10,9 @@ const makeContext = (user: unknown) =>
 
 describe('RolesGuard', () => {
   it('permite si no hay roles requeridos', () => {
-    const reflector = { getAllAndOverride: jest.fn().mockReturnValue(undefined) };
+    const reflector = {
+      getAllAndOverride: jest.fn().mockReturnValue(undefined),
+    };
     const guard = new RolesGuard(reflector as never);
     expect(guard.canActivate(makeContext({ role: 'Admin' }))).toBe(true);
   });

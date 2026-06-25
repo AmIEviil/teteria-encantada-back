@@ -14,7 +14,15 @@ import {
   PublicUser,
 } from './auth.service';
 import { AuthUser } from './interfaces/auth-user.interface';
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Response } from 'express';
 import { GoogleProfileResult } from './strategies/google.strategy';

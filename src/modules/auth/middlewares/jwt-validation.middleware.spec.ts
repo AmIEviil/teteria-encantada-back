@@ -81,7 +81,11 @@ describe('JwtValidationMiddleware', () => {
   });
 
   it('deja pasar ruta del sistema', async () => {
-    await middleware.use(makeReq({ originalUrl: '/health' }), {} as never, next);
+    await middleware.use(
+      makeReq({ originalUrl: '/health' }),
+      {} as never,
+      next,
+    );
     expect(next).toHaveBeenCalled();
   });
 

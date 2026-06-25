@@ -7,7 +7,10 @@ import { MigrationAudit } from './entities/migration-audit.entity';
 
 describe('MigrationService', () => {
   let service: MigrationService;
-  let dataSource: Record<string, jest.Mock> & { migrations: unknown[]; options: unknown };
+  let dataSource: Record<string, jest.Mock> & {
+    migrations: unknown[];
+    options: unknown;
+  };
   let auditRepo: Record<string, jest.Mock>;
   let qr: Record<string, jest.Mock> & { isTransactionActive: boolean };
   let auditQb: Record<string, jest.Mock>;
@@ -117,9 +120,9 @@ describe('MigrationService', () => {
 
     it('rollback y audita en error', async () => {
       mig1.up.mockRejectedValue(new Error('fallo'));
-      await expect(
-        service.executeMigration('Mig1', 'u1'),
-      ).rejects.toThrow('fallo');
+      await expect(service.executeMigration('Mig1', 'u1')).rejects.toThrow(
+        'fallo',
+      );
       expect(qr.rollbackTransaction).toHaveBeenCalled();
       const failAudit = auditRepo.save.mock.calls.find(
         (c) => c[0].success === false,

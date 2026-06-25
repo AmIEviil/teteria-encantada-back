@@ -76,7 +76,9 @@ describe('OrdersService', () => {
   let loyaltyServiceMock: { earnPurchase: jest.Mock };
 
   beforeEach(async () => {
-    loyaltyServiceMock = { earnPurchase: jest.fn().mockResolvedValue(undefined) };
+    loyaltyServiceMock = {
+      earnPurchase: jest.fn().mockResolvedValue(undefined),
+    };
     productQb = makeQb();
     orderQb = makeQb();
 
@@ -568,9 +570,7 @@ describe('OrdersService', () => {
 
     it('maneja reporte vacio y defaults', async () => {
       orderQb.getCount.mockResolvedValue(0);
-      orderQb.getRawMany
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+      orderQb.getRawMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
       orderQb.getRawOne.mockResolvedValue(undefined);
       const result = await service.findReport({});
       expect(result.items).toHaveLength(0);

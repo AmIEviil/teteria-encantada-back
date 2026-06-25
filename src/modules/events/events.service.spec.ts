@@ -251,10 +251,7 @@ describe('EventsService', () => {
     });
 
     it.each([
-      [
-        'nombres duplicados',
-        [makeTicketTypeDto(), makeTicketTypeDto()],
-      ],
+      ['nombres duplicados', [makeTicketTypeDto(), makeTicketTypeDto()]],
       [
         'sin cupo total ni diario',
         [makeTicketTypeDto({ totalStock: undefined, dailyStocks: [] })],
@@ -593,9 +590,7 @@ describe('EventsService', () => {
           ticketTypes: [
             buildTicketType({
               totalStock: null,
-              dailyStocks: [
-                { date: '2026-07-02', quantity: 1 } as never,
-              ],
+              dailyStocks: [{ date: '2026-07-02', quantity: 1 } as never],
             }),
           ],
         }),
@@ -612,9 +607,7 @@ describe('EventsService', () => {
           ticketTypes: [
             buildTicketType({
               totalStock: null,
-              dailyStocks: [
-                { date: '2026-07-01', quantity: 5 } as never,
-              ],
+              dailyStocks: [{ date: '2026-07-01', quantity: 5 } as never],
             }),
           ],
         }),
@@ -696,7 +689,9 @@ describe('EventsService', () => {
       const result = await service.createTicket(
         'ev-1',
         dto({
-          menuSelection: { groups: [{ groupKey: 'plato', optionIds: ['pollo'] }] },
+          menuSelection: {
+            groups: [{ groupKey: 'plato', optionIds: ['pollo'] }],
+          },
         }) as never,
       );
       expect(result).toHaveLength(1);
@@ -772,7 +767,9 @@ describe('EventsService', () => {
       eventRepo.findOne.mockResolvedValue(
         buildEvent({ ticketTypes: [buildTicketType()] }),
       );
-      ticketRepo.save.mockResolvedValue(baseTicket({ attendeeFirstName: 'Bob' }));
+      ticketRepo.save.mockResolvedValue(
+        baseTicket({ attendeeFirstName: 'Bob' }),
+      );
       const result = await service.updateTicket('ev-1', 'tk-1', {
         attendeeFirstName: ' Bob ',
         price: 120,
@@ -821,9 +818,9 @@ describe('EventsService', () => {
   describe('removeTicket', () => {
     it('rechaza ticket inexistente', async () => {
       ticketRepo.findOne.mockResolvedValue(null);
-      await expect(
-        service.removeTicket('ev-1', 'tk-x'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.removeTicket('ev-1', 'tk-x')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('elimina ticket activo y sincroniza', async () => {

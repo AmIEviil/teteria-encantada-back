@@ -32,8 +32,12 @@ export class AddUserGoogleAuth1783000000000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX IF EXISTS "UQ_users_google_id"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "google_id"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "provider"`);
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "google_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "provider"`,
+    );
     await queryRunner.query(`DROP TYPE IF EXISTS "users_provider_enum"`);
     await queryRunner.query(
       `ALTER TABLE "users" ALTER COLUMN "password_hash" SET NOT NULL`,

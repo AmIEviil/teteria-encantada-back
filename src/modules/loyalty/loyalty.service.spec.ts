@@ -21,12 +21,13 @@ function memRepo<T extends { id?: string }>() {
       else rows.push(e);
       return e;
     }),
-    findOne: jest.fn(async ({ where }: { where: Partial<T> }) =>
-      rows.find((r) =>
-        Object.entries(where).every(
-          ([k, v]) => (r as Record<string, unknown>)[k] === v,
-        ),
-      ) ?? null,
+    findOne: jest.fn(
+      async ({ where }: { where: Partial<T> }) =>
+        rows.find((r) =>
+          Object.entries(where).every(
+            ([k, v]) => (r as Record<string, unknown>)[k] === v,
+          ),
+        ) ?? null,
     ),
     find: jest.fn(async () => [...rows]),
     delete: jest.fn(async () => ({ affected: 1 })),

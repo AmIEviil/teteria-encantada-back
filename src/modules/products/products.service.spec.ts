@@ -6,7 +6,6 @@ import {
 import { QueryFailedError } from 'typeorm';
 import { ProductsService } from './products.service';
 import { Product } from './entities/product.entity';
-import { ProductPriceHistory } from './entities/product-price-history.entity';
 
 type AnyRepo = Record<string, jest.Mock>;
 
@@ -259,7 +258,11 @@ describe('ProductsService', () => {
       productRepo.findOneBy
         .mockResolvedValueOnce(buildProduct({ price: 10 }))
         .mockResolvedValueOnce(buildProduct({ price: 20, imageId: null }));
-      const result = await service.update('prod-1', { price: 20 } as never, 'u1');
+      const result = await service.update(
+        'prod-1',
+        { price: 20 } as never,
+        'u1',
+      );
       expect(historyRepo.save).toHaveBeenCalled();
       expect(result.id).toBe('prod-1');
     });
@@ -268,11 +271,7 @@ describe('ProductsService', () => {
       productRepo.findOneBy
         .mockResolvedValueOnce(buildProduct({ imageId: 'img-old' }))
         .mockResolvedValueOnce(buildProduct({ imageId: 'img-new' }));
-      await service.update(
-        'prod-1',
-        { imageId: 'img-new' } as never,
-        'u1',
-      );
+      await service.update('prod-1', { imageId: 'img-new' } as never, 'u1');
       expect(imagesService.remove).toHaveBeenCalledWith('img-old');
     });
 

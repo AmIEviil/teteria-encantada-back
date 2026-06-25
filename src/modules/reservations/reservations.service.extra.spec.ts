@@ -2,10 +2,7 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ReservationsService } from './reservations.service';
-import {
-  Reservation,
-  ReservationStatus,
-} from './entities/reservation.entity';
+import { Reservation, ReservationStatus } from './entities/reservation.entity';
 import { ReservationWeeklySchedule } from './entities/reservation-weekly-schedule.entity';
 import {
   RestaurantTable,
@@ -306,7 +303,9 @@ describe('ReservationsService (full)', () => {
       }));
       scheduleRepo.find.mockResolvedValue(days);
       const result = await service.updateWeeklySchedule({
-        days: [{ dayOfWeek: 1, isOpen: true, opensAt: '11:00', closesAt: '22:00' }],
+        days: [
+          { dayOfWeek: 1, isOpen: true, opensAt: '11:00', closesAt: '22:00' },
+        ],
       } as never);
       expect(result).toBeDefined();
       expect(scheduleRepo.save).toHaveBeenCalled();
@@ -363,12 +362,8 @@ describe('ReservationsService (full)', () => {
     });
 
     it('no cancela si tienen orden asociada', async () => {
-      reservationRepo.find.mockResolvedValue([
-        { id: 'r1', tableId: 't1' },
-      ]);
-      orderRepo.find = jest
-        .fn()
-        .mockResolvedValue([{ reservationId: 'r1' }]);
+      reservationRepo.find.mockResolvedValue([{ id: 'r1', tableId: 't1' }]);
+      orderRepo.find = jest.fn().mockResolvedValue([{ reservationId: 'r1' }]);
       await service.cancelNoShowReservationsWithoutOrders();
       expect(reservationRepo.update).not.toHaveBeenCalled();
     });

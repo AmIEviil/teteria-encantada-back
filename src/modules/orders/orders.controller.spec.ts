@@ -48,10 +48,7 @@ describe('OrdersController', () => {
 
   it('findAll rechaza status invalido', () => {
     expect(() =>
-      controller.findAll(
-        '550e8400-e29b-41d4-a716-446655440000',
-        'NOPE',
-      ),
+      controller.findAll('550e8400-e29b-41d4-a716-446655440000', 'NOPE'),
     ).toThrow(BadRequestException);
   });
 

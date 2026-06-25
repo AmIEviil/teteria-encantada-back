@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddEventWorkshopAndTicketUserId1785000000000
-  implements MigrationInterface
-{
+export class AddEventWorkshopAndTicketUserId1785000000000 implements MigrationInterface {
   name = 'AddEventWorkshopAndTicketUserId1785000000000';
 
   // Idempotente: synchronize ON pudo crear ya estas columnas.
@@ -20,7 +18,9 @@ export class AddEventWorkshopAndTicketUserId1785000000000
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "event_tickets" DROP COLUMN "userId"`);
-    await queryRunner.query(`ALTER TABLE "events" DROP COLUMN "workshopPoints"`);
+    await queryRunner.query(
+      `ALTER TABLE "events" DROP COLUMN "workshopPoints"`,
+    );
     await queryRunner.query(`ALTER TABLE "events" DROP COLUMN "isWorkshop"`);
   }
 }

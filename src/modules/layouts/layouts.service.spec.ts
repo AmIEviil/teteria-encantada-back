@@ -107,7 +107,10 @@ describe('LayoutsService', () => {
     expect(result.message).toContain('eliminado');
   });
 
-  const snapshot = (tables: unknown[], overrides: Record<string, unknown> = {}) => ({
+  const snapshot = (
+    tables: unknown[],
+    overrides: Record<string, unknown> = {},
+  ) => ({
     name: 'Snap',
     gridSize: { rows: 5, cols: 5 },
     chairs: [{ id: 'c1', position: { x: 1, y: 2 }, rotation: 0 }],

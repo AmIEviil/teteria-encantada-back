@@ -151,11 +151,7 @@ export class ProductsService {
         await this.productPriceHistoryRepository.save(priceHistory);
       }
 
-      if (
-        hasImageField &&
-        previousImageId &&
-        previousImageId !== nextImageId
-      ) {
+      if (hasImageField && previousImageId && previousImageId !== nextImageId) {
         await this.imagesService.remove(previousImageId);
       }
 

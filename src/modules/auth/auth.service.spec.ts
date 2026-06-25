@@ -177,7 +177,9 @@ describe('AuthService', () => {
   describe('forgotPassword', () => {
     it('respuesta generica si no existe usuario', async () => {
       userRepo.findOneBy.mockResolvedValue(null);
-      const result = await service.forgotPassword({ email: 'x@x.com' } as never);
+      const result = await service.forgotPassword({
+        email: 'x@x.com',
+      } as never);
       expect(result.resetToken).toBeUndefined();
     });
 
@@ -200,7 +202,10 @@ describe('AuthService', () => {
 
     it('rechaza confirmacion distinta', async () => {
       await expect(
-        service.resetPassword({ ...baseDto, confirmPassword: 'other' } as never),
+        service.resetPassword({
+          ...baseDto,
+          confirmPassword: 'other',
+        } as never),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -279,7 +284,10 @@ describe('AuthService', () => {
     });
 
     it('no re-vincula si el usuario ya tiene googleId', async () => {
-      const existing = buildUser({ email: 'cliente@gmail.com', googleId: 'g-1' });
+      const existing = buildUser({
+        email: 'cliente@gmail.com',
+        googleId: 'g-1',
+      });
       userRepo.findOneBy.mockResolvedValueOnce(existing);
 
       await service.googleLogin(profile);

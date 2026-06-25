@@ -28,7 +28,9 @@ export class RefactorImageToS31781000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "images" DROP COLUMN IF EXISTS "size"`);
+    await queryRunner.query(
+      `ALTER TABLE "images" DROP COLUMN IF EXISTS "size"`,
+    );
     await queryRunner.query(
       `ALTER TABLE "images" DROP COLUMN IF EXISTS "mime_type"`,
     );

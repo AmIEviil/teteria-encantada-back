@@ -65,7 +65,9 @@ describe('AuthController', () => {
         accessToken: 'jwt-xyz',
         user: { id: 'u1' },
       });
-      const res = { redirect: jest.fn() } as unknown as import('express').Response;
+      const res = {
+        redirect: jest.fn(),
+      } as unknown as import('express').Response;
       const req = {
         user: {
           googleId: 'g-1',

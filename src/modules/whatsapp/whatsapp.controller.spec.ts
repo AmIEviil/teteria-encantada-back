@@ -3,7 +3,9 @@ import { WhatsappController } from './whatsapp.controller';
 
 describe('WhatsappController', () => {
   let controller: WhatsappController;
-  const webhookService = { handleIncoming: jest.fn().mockResolvedValue(undefined) };
+  const webhookService = {
+    handleIncoming: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(() => {
     controller = new WhatsappController(webhookService as never);
