@@ -6,6 +6,7 @@ import { EventTicket } from './entities/event-ticket.entity';
 import { Event } from './entities/event.entity';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { EventsService } from './events.service';
       EventTicketTypeDailyStock,
       EventTicket,
     ]),
+    LoyaltyModule,
   ],
   controllers: [EventsController],
   providers: [EventsService],

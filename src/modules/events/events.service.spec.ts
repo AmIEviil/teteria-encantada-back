@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EventsService } from './events.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { Event, EventStatus } from './entities/event.entity';
 import {
   EventTicketMenuMode,
@@ -89,8 +90,12 @@ describe('EventsService', () => {
   let txTicketType: AnyRepo;
   let ticketQb: Record<string, jest.Mock>;
   let eventQb: Record<string, jest.Mock>;
+  let loyaltyServiceMock: { earnAttendance: jest.Mock };
 
   beforeEach(async () => {
+    loyaltyServiceMock = {
+      earnAttendance: jest.fn().mockResolvedValue(undefined),
+    };
     ticketQb = {
       leftJoinAndSelect: jest.fn(() => ticketQb),
       where: jest.fn(() => ticketQb),
@@ -160,6 +165,7 @@ describe('EventsService', () => {
           useValue: dailyStockRepo,
         },
         { provide: getRepositoryToken(EventTicket), useValue: ticketRepo },
+        { provide: LoyaltyService, useValue: loyaltyServiceMock },
       ],
     }).compile();
 
@@ -553,6 +559,32 @@ describe('EventsService', () => {
       const result = await service.createTicket('ev-1', dto() as never);
       expect(result).toHaveLength(1);
       expect(eventRepo.update).toHaveBeenCalled();
+    });
+
+    it('devenga puntos de asistencia en taller con cliente registrado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          isWorkshop: true,
+          workshopPoints: 50,
+          ticketTypes: [buildTicketType()],
+        }),
+      );
+      ticketRepo.save.mockResolvedValue([{ id: 'tk-1' }]);
+      await service.createTicket('ev-1', dto({ userId: 'u1' }) as never);
+      expect(loyaltyServiceMock.earnAttendance).toHaveBeenCalledWith(
+        'u1',
+        'ev-1',
+        50,
+      );
+    });
+
+    it('no devenga asistencia si el evento no es taller', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+      ticketRepo.save.mockResolvedValue([{ id: 'tk-1' }]);
+      await service.createTicket('ev-1', dto({ userId: 'u1' }) as never);
+      expect(loyaltyServiceMock.earnAttendance).not.toHaveBeenCalled();
     });
 
     it('rechaza cupo diario agotado', async () => {
