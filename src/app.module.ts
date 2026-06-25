@@ -16,6 +16,7 @@ import { PublicModule } from './modules/public/public.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
@@ -54,6 +55,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     ScheduleModule.forRoot(),
     WhatsappModule,
     RealtimeModule,
+    LoyaltyModule,
   ],
   controllers: [AppController],
   providers: [
