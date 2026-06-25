@@ -931,22 +931,24 @@ export class EventsService {
     }
 
     const uniqueGroupKeys = new Set<string>();
-    const normalizedGroups = groupsRaw.map((rawGroup) => {
-      const normalizedGroup = this.normalizeMenuTemplateGroup(
-        rawGroup,
-        ticketTypeName,
-      );
-      const normalizedGroupKey = normalizedGroup.key.toLowerCase();
-
-      if (uniqueGroupKeys.has(normalizedGroupKey)) {
-        throw new BadRequestException(
-          `El ticket "${ticketTypeName}" repite grupos de menu con la misma clave`,
+    const normalizedGroups = groupsRaw.map(
+      (rawGroup: Parameters<typeof this.normalizeMenuTemplateGroup>[0]) => {
+        const normalizedGroup = this.normalizeMenuTemplateGroup(
+          rawGroup,
+          ticketTypeName,
         );
-      }
+        const normalizedGroupKey = normalizedGroup.key.toLowerCase();
 
-      uniqueGroupKeys.add(normalizedGroupKey);
-      return normalizedGroup;
-    });
+        if (uniqueGroupKeys.has(normalizedGroupKey)) {
+          throw new BadRequestException(
+            `El ticket "${ticketTypeName}" repite grupos de menu con la misma clave`,
+          );
+        }
+
+        uniqueGroupKeys.add(normalizedGroupKey);
+        return normalizedGroup;
+      },
+    );
 
     return {
       groups: normalizedGroups,
@@ -1134,19 +1136,21 @@ export class EventsService {
     }
 
     const uniqueGroupKeys = new Set<string>();
-    const normalizedGroups = groupsRaw.map((group) => {
-      const normalizedGroup = this.normalizeMenuSelectionGroup(group);
-      const normalizedGroupKey = normalizedGroup.groupKey.toLowerCase();
+    const normalizedGroups = groupsRaw.map(
+      (group: Parameters<typeof this.normalizeMenuSelectionGroup>[0]) => {
+        const normalizedGroup = this.normalizeMenuSelectionGroup(group);
+        const normalizedGroupKey = normalizedGroup.groupKey.toLowerCase();
 
-      if (uniqueGroupKeys.has(normalizedGroupKey)) {
-        throw new BadRequestException(
-          'La seleccion de menu contiene grupos duplicados',
-        );
-      }
+        if (uniqueGroupKeys.has(normalizedGroupKey)) {
+          throw new BadRequestException(
+            'La seleccion de menu contiene grupos duplicados',
+          );
+        }
 
-      uniqueGroupKeys.add(normalizedGroupKey);
-      return normalizedGroup;
-    });
+        uniqueGroupKeys.add(normalizedGroupKey);
+        return normalizedGroup;
+      },
+    );
 
     return {
       groups: normalizedGroups,
