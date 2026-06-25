@@ -22,6 +22,8 @@ import { S3StorageService, S3_CLIENT } from './storage/s3-storage.service';
               ? {
                   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
                   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+                  // ponytail: AWS Academy Learner Lab da creds temporales con session token
+                  sessionToken: process.env.AWS_SESSION_TOKEN,
                 }
               : undefined,
         }),

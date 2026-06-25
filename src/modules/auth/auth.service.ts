@@ -96,7 +96,7 @@ export class AuthService implements OnModuleInit {
       .where('LOWER(user.username) = LOWER(:username)', { username })
       .getOne();
 
-    if (!user?.isActive) {
+    if (!user?.isActive || !user.passwordHash) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 

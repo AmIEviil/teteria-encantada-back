@@ -16,7 +16,7 @@ import {
 import { AuthUser } from './interfaces/auth-user.interface';
 import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { GoogleProfileResult } from './strategies/google.strategy';
 // import { Roles } from './decorators/roles.decorator';
 // import { SYSTEM_ROLES } from './constants/system-roles.constant';
