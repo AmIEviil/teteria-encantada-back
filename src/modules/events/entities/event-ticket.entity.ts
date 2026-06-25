@@ -40,6 +40,10 @@ export class EventTicket {
   @JoinColumn({ name: 'ticketTypeId' })
   ticketType!: EventTicketType;
 
+  // Cliente registrado al que se atribuyen puntos de asistencia (nullable).
+  @Column({ type: 'uuid', nullable: true })
+  userId!: string | null;
+
   @Column({ type: 'varchar', length: 120 })
   attendeeFirstName!: string;
 

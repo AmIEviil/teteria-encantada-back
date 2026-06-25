@@ -186,6 +186,17 @@ export class CreateEventDto {
   @IsBoolean()
   isFreeEntry?: boolean;
 
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isWorkshop?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  workshopPoints?: number;
+
   @ValidateIf((dto: CreateEventDto) => !dto.isFreeEntry)
   @IsArray()
   @ArrayMinSize(1)

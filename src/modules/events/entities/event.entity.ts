@@ -52,6 +52,13 @@ export class Event {
   @Column({ type: 'boolean', default: false })
   isFreeEntry!: boolean;
 
+  // Fidelización: marca el evento como taller y los puntos que otorga por asistencia.
+  @Column({ type: 'boolean', default: false })
+  isWorkshop!: boolean;
+
+  @Column({ type: 'int', default: 0 })
+  workshopPoints!: number;
+
   @OneToMany(() => EventTicketType, (ticketType) => ticketType.event)
   ticketTypes!: EventTicketType[];
 

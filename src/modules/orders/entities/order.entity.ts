@@ -48,6 +48,10 @@ export class Order {
   @JoinColumn({ name: 'reservationId' })
   reservation: Reservation | null;
 
+  // Cliente registrado al que se atribuyen puntos por compra (nullable: órdenes anónimas).
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
+
   @Column({
     type: 'enum',
     enum: OrderStatus,

@@ -40,6 +40,10 @@ export class CreateEventTicketDto {
   @IsUUID()
   ticketTypeId!: string;
 
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
