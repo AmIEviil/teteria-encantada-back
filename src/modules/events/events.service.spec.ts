@@ -659,6 +659,18 @@ describe('EventsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('rechaza enviar tipos de ticket sin jornadas cuando el evento ya usa jornadas', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: true }));
+      await expect(
+        service.update('ev-1', {
+          hasSessions: true,
+          ticketTypes: [makeTicketTypeDto({ totalStock: undefined })],
+        } as never),
+      ).rejects.toThrow(
+        'Debes enviar las jornadas del evento junto a los tipos de ticket',
+      );
+    });
+
     it('cambia a modo jornadas con tipos y jornadas nuevas, borra y recrea sesiones', async () => {
       eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: false }));
       ticketRepo.countBy.mockResolvedValue(0);
