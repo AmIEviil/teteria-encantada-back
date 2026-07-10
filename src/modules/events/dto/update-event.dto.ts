@@ -14,7 +14,6 @@ import {
   Matches,
   MaxLength,
   Min,
-  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { EventStatus } from '../entities/event.entity';

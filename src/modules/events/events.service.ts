@@ -405,7 +405,10 @@ export class EventsService {
       createEventTicketDto.ticketTypeId,
     );
 
-    const attendanceDate = this.toDateOnly(createEventTicketDto.attendanceDate);
+    // TODO(Task 4): attendanceDate pasa a derivarse de la jornada; este cast se elimina al reescribir este bloque.
+    const attendanceDate = this.toDateOnly(
+      createEventTicketDto.attendanceDate as Date,
+    );
 
     this.assertAttendanceDateInsideEvent(attendanceDate, event);
     this.assertEventCapacityAvailable(event, true, quantity);

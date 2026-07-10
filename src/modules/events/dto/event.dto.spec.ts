@@ -228,4 +228,50 @@ describe('Event DTOs', () => {
       expect(errors.length).toBeGreaterThan(0);
     });
   });
+
+  describe('CreateEventDto validacion condicional hasSessions', () => {
+    it('rechaza hasSessions: true sin sessions', async () => {
+      const dto = plainToInstance(CreateEventDto, {
+        title: 'Evento con jornadas',
+        startsAt: '2026-07-01T20:00:00Z',
+        endsAt: '2026-07-02T20:00:00Z',
+        isFreeEntry: true,
+        hasSessions: true,
+      });
+      expect((await validate(dto)).length).toBeGreaterThan(0);
+    });
+
+    it('acepta hasSessions: true con sessions valida', async () => {
+      const dto = plainToInstance(CreateEventDto, {
+        title: 'Evento con jornadas',
+        startsAt: '2026-07-01T20:00:00Z',
+        endsAt: '2026-07-02T20:00:00Z',
+        isFreeEntry: true,
+        hasSessions: true,
+        sessions: [{ date: '2026-07-09', startTime: '12:00', capacity: 10 }],
+      });
+      expect(await validate(dto)).toHaveLength(0);
+    });
+  });
+
+  describe('CreateEventTicketDto validacion condicional sessionId/attendanceDate', () => {
+    it('acepta sessionId sin attendanceDate', async () => {
+      const dto = plainToInstance(CreateEventTicketDto, {
+        ticketTypeId: uuid,
+        sessionId: uuid,
+        attendeeFirstName: 'Ana',
+        attendeeLastName: 'Paz',
+      });
+      expect(await validate(dto)).toHaveLength(0);
+    });
+
+    it('rechaza falta de sessionId y attendanceDate', async () => {
+      const dto = plainToInstance(CreateEventTicketDto, {
+        ticketTypeId: uuid,
+        attendeeFirstName: 'Ana',
+        attendeeLastName: 'Paz',
+      });
+      expect((await validate(dto)).length).toBeGreaterThan(0);
+    });
+  });
 });
