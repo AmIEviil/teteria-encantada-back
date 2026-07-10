@@ -10,6 +10,7 @@ import {
 import { numericTransformer } from '../../../common/db/numeric.transformer';
 import { Event } from './event.entity';
 import { EventTicketType } from './event-ticket-type.entity';
+import { EventSession } from './event-session.entity';
 
 export enum EventTicketStatus {
   ACTIVE = 'ACTIVE',
@@ -52,6 +53,13 @@ export class EventTicket {
 
   @Column({ type: 'date' })
   attendanceDate!: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  sessionId!: string | null;
+
+  @ManyToOne(() => EventSession, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'sessionId' })
+  session!: EventSession | null;
 
   @Column({
     type: 'numeric',
