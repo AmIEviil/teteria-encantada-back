@@ -14,6 +14,8 @@ import {
 } from './entities/event-ticket-type.entity';
 import { EventTicket, EventTicketStatus } from './entities/event-ticket.entity';
 import { EventTicketTypeDailyStock } from './entities/event-ticket-type-daily-stock.entity';
+import { EventSession } from './entities/event-session.entity';
+import { EventSessionTicketAllocation } from './entities/event-session-ticket-allocation.entity';
 
 type AnyRepo = Record<string, jest.Mock> & { manager?: unknown };
 
@@ -88,6 +90,8 @@ describe('EventsService', () => {
   let ticketRepo: AnyRepo;
   let txEvent: AnyRepo;
   let txTicketType: AnyRepo;
+  let txSession: AnyRepo;
+  let txAllocation: AnyRepo;
   let ticketQb: Record<string, jest.Mock>;
   let eventQb: Record<string, jest.Mock>;
   let loyaltyServiceMock: { earnAttendance: jest.Mock };
@@ -121,13 +125,30 @@ describe('EventsService', () => {
     };
     txTicketType = {
       create: jest.fn((v) => v),
+      save: jest.fn((v: unknown) =>
+        Promise.resolve(
+          Array.isArray(v)
+            ? v.map((item, index) => ({ id: `tt-${index + 1}`, ...item }))
+            : v,
+        ),
+      ),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
+    txSession = {
+      create: jest.fn((v) => v),
       save: jest.fn((v) => Promise.resolve(v)),
       delete: jest.fn().mockResolvedValue(undefined),
     };
+    txAllocation = {
+      create: jest.fn((v) => v),
+    };
     const entityManager = {
-      getRepository: jest.fn((entity: unknown) =>
-        entity === Event ? txEvent : txTicketType,
-      ),
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === Event) return txEvent;
+        if (entity === EventSession) return txSession;
+        if (entity === EventSessionTicketAllocation) return txAllocation;
+        return txTicketType;
+      }),
     };
 
     eventRepo = {
@@ -369,6 +390,122 @@ describe('EventsService', () => {
           startsAt: START,
           endsAt: END,
           ticketTypes,
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('crea evento con jornadas y calcula totalTickets por capacidades', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: true }));
+      await service.create({
+        title: 'Jornadas',
+        startsAt: START,
+        endsAt: END,
+        hasSessions: true,
+        ticketTypes: [makeTicketTypeDto({ totalStock: undefined })],
+        sessions: [
+          {
+            date: new Date('2026-07-01'),
+            startTime: '12:00',
+            capacity: 30,
+            allocations: [{ ticketTypeIndex: 0, quantity: 10 }],
+          },
+          { date: new Date('2026-07-02'), startTime: '16:00', capacity: 20 },
+        ],
+      } as never);
+
+      expect(txSession.save).toHaveBeenCalled();
+      const savedEvent = txEvent.create.mock.calls[0][0];
+      expect(savedEvent.totalTickets).toBe(50);
+      expect(savedEvent.hasSessions).toBe(true);
+    });
+
+    it('rechaza jornadas con suma de cupos mayor a la capacidad', async () => {
+      await expect(
+        service.create({
+          title: 'Jornadas',
+          startsAt: START,
+          endsAt: END,
+          hasSessions: true,
+          ticketTypes: [makeTicketTypeDto({ totalStock: undefined })],
+          sessions: [
+            {
+              date: new Date('2026-07-01'),
+              startTime: '12:00',
+              capacity: 10,
+              allocations: [{ ticketTypeIndex: 0, quantity: 11 }],
+            },
+          ],
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza jornadas duplicadas (misma fecha y hora)', async () => {
+      await expect(
+        service.create({
+          title: 'Jornadas',
+          startsAt: START,
+          endsAt: END,
+          hasSessions: true,
+          ticketTypes: [makeTicketTypeDto({ totalStock: undefined })],
+          sessions: [
+            { date: new Date('2026-07-01'), startTime: '12:00', capacity: 10 },
+            { date: new Date('2026-07-01'), startTime: '12:00', capacity: 20 },
+          ],
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza jornada fuera del rango del evento', async () => {
+      await expect(
+        service.create({
+          title: 'Jornadas',
+          startsAt: START,
+          endsAt: END,
+          hasSessions: true,
+          ticketTypes: [makeTicketTypeDto({ totalStock: undefined })],
+          sessions: [
+            { date: new Date('2026-07-20'), startTime: '12:00', capacity: 10 },
+          ],
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza dailyStocks cuando el evento usa jornadas', async () => {
+      await expect(
+        service.create({
+          title: 'Jornadas',
+          startsAt: START,
+          endsAt: END,
+          hasSessions: true,
+          ticketTypes: [
+            makeTicketTypeDto({
+              totalStock: undefined,
+              dailyStocks: [{ date: new Date('2026-07-01'), quantity: 5 }],
+            }),
+          ],
+          sessions: [
+            { date: new Date('2026-07-01'), startTime: '12:00', capacity: 10 },
+          ],
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza allocation con ticketTypeIndex inexistente', async () => {
+      await expect(
+        service.create({
+          title: 'Jornadas',
+          startsAt: START,
+          endsAt: END,
+          hasSessions: true,
+          ticketTypes: [makeTicketTypeDto({ totalStock: undefined })],
+          sessions: [
+            {
+              date: new Date('2026-07-01'),
+              startTime: '12:00',
+              capacity: 10,
+              allocations: [{ ticketTypeIndex: 5, quantity: 5 }],
+            },
+          ],
         } as never),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
