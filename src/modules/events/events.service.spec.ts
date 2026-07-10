@@ -417,6 +417,18 @@ describe('EventsService', () => {
       const savedEvent = txEvent.create.mock.calls[0][0];
       expect(savedEvent.totalTickets).toBe(50);
       expect(savedEvent.hasSessions).toBe(true);
+
+      const savedSessions = txSession.save.mock.calls[0][0];
+      expect(savedSessions[0]).toMatchObject({
+        date: '2026-07-01',
+        startTime: '12:00',
+        capacity: 30,
+        allocations: [{ ticketTypeId: 'tt-1', quantity: 10 }],
+      });
+      expect(savedSessions[1]).toMatchObject({
+        allocations: [],
+        endTime: null,
+      });
     });
 
     it('rechaza jornadas con suma de cupos mayor a la capacidad', async () => {
@@ -595,6 +607,83 @@ describe('EventsService', () => {
         ticketTypes: [makeTicketTypeDto()],
       } as never);
       expect(txTicketType.save).toHaveBeenCalled();
+    });
+
+    it('rechaza cambiar a modo jornadas sin enviar tipos de ticket', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: false }));
+      await expect(
+        service.update('ev-1', { hasSessions: true } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza salir de modo jornadas sin enviar tipos de ticket', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: true }));
+      await expect(
+        service.update('ev-1', { hasSessions: false } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('cambia de jornadas a tipos simples, borra sesiones y recalcula totalTickets', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: true }));
+      ticketRepo.countBy.mockResolvedValue(0);
+      const result = await service.update('ev-1', {
+        hasSessions: false,
+        ticketTypes: [makeTicketTypeDto({ totalStock: 40 })],
+      } as never);
+
+      expect(result).toBeDefined();
+      expect(txSession.delete).toHaveBeenCalledWith({ eventId: 'ev-1' });
+      const savedEvent = txEvent.save.mock.calls[0][0];
+      expect(savedEvent.totalTickets).toBe(40);
+    });
+
+    it('rechaza enviar jornadas sin tipos de ticket', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: true }));
+      await expect(
+        service.update('ev-1', {
+          sessions: [
+            { date: new Date('2026-07-01'), startTime: '12:00', capacity: 10 },
+          ],
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('cambia a modo jornadas con tipos y jornadas nuevas, borra y recrea sesiones', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: false }));
+      ticketRepo.countBy.mockResolvedValue(0);
+      const result = await service.update('ev-1', {
+        hasSessions: true,
+        ticketTypes: [makeTicketTypeDto({ totalStock: undefined })],
+        sessions: [
+          {
+            date: new Date('2026-07-01'),
+            startTime: '12:00',
+            capacity: 30,
+            allocations: [{ ticketTypeIndex: 0, quantity: 10 }],
+          },
+          { date: new Date('2026-07-02'), startTime: '16:00', capacity: 20 },
+        ],
+      } as never);
+
+      expect(result).toBeDefined();
+      expect(txSession.delete).toHaveBeenCalledWith({ eventId: 'ev-1' });
+      expect(txSession.save).toHaveBeenCalled();
+      const savedEvent = txEvent.save.mock.calls[0][0];
+      expect(savedEvent.totalTickets).toBe(50);
+    });
+
+    it('rechaza actualizar jornadas si el evento ya tiene tickets', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent({ hasSessions: false }));
+      ticketRepo.countBy.mockResolvedValue(1);
+      await expect(
+        service.update('ev-1', {
+          hasSessions: true,
+          ticketTypes: [makeTicketTypeDto({ totalStock: undefined })],
+          sessions: [
+            { date: new Date('2026-07-01'), startTime: '12:00', capacity: 10 },
+          ],
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 

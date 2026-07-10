@@ -315,6 +315,16 @@ export class EventsService {
     const nextHasSessions = updateEventDto.hasSessions ?? event.hasSessions;
     const isChangingSessionsMode = nextHasSessions !== event.hasSessions;
 
+    if (
+      isChangingSessionsMode &&
+      !nextIsFreeEntry &&
+      !updateEventDto.ticketTypes
+    ) {
+      throw new BadRequestException(
+        'Para cambiar el modo de jornadas debes enviar los tipos de ticket del evento',
+      );
+    }
+
     this.validateEventDates(startsAt, endsAt);
 
     if (nextIsFreeEntry && updateEventDto.ticketTypes) {
