@@ -82,6 +82,17 @@ const buildTicketType = (
     ...overrides,
   }) as EventTicketType;
 
+const buildSession = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  id: 'ss-1',
+  eventId: 'ev-1',
+  date: '2026-07-01',
+  startTime: '12:00',
+  endTime: null,
+  capacity: 10,
+  allocations: [],
+  ...overrides,
+});
+
 describe('EventsService', () => {
   let service: EventsService;
   let eventRepo: AnyRepo;
@@ -947,6 +958,110 @@ describe('EventsService', () => {
             },
           }) as never,
         ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('exige jornada cuando el evento usa jornadas', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          hasSessions: true,
+          sessions: [buildSession()],
+          ticketTypes: [buildTicketType({ totalStock: null })],
+        } as never),
+      );
+
+      await expect(
+        service.createTicket('ev-1', {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-01'),
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza sessionId en evento sin jornadas', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+
+      await expect(
+        service.createTicket('ev-1', {
+          ticketTypeId: 'tt-1',
+          sessionId: 'ss-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Diaz',
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('crea ticket en jornada con cupo y deriva attendanceDate', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          hasSessions: true,
+          sessions: [buildSession()],
+          ticketTypes: [buildTicketType({ totalStock: null })],
+        } as never),
+      );
+      ticketQb.getCount.mockResolvedValue(0);
+
+      const result = await service.createTicket('ev-1', {
+        ticketTypeId: 'tt-1',
+        sessionId: 'ss-1',
+        attendeeFirstName: 'Ana',
+        attendeeLastName: 'Diaz',
+      } as never);
+
+      expect(result[0].sessionId).toBe('ss-1');
+      expect(result[0].attendanceDate).toBe('2026-07-01');
+    });
+
+    it('rechaza ticket cuando la jornada esta llena', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          hasSessions: true,
+          totalTickets: 0,
+          sessions: [buildSession({ capacity: 1 })],
+          ticketTypes: [buildTicketType({ totalStock: null })],
+        } as never),
+      );
+      ticketQb.getCount.mockResolvedValue(1);
+
+      await expect(
+        service.createTicket('ev-1', {
+          ticketTypeId: 'tt-1',
+          sessionId: 'ss-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Diaz',
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza ticket cuando el cupo del tipo en la jornada esta agotado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          hasSessions: true,
+          totalTickets: 0,
+          sessions: [
+            buildSession({
+              capacity: 100,
+              allocations: [
+                { id: 'al-1', sessionId: 'ss-1', ticketTypeId: 'tt-1', quantity: 2 },
+              ],
+            }),
+          ],
+          ticketTypes: [buildTicketType({ totalStock: null })],
+        } as never),
+      );
+      ticketQb.getCount.mockResolvedValue(2);
+
+      await expect(
+        service.createTicket('ev-1', {
+          ticketTypeId: 'tt-1',
+          sessionId: 'ss-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Diaz',
+        } as never),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });

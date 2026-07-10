@@ -543,20 +543,43 @@ export class EventsService {
       createEventTicketDto.ticketTypeId,
     );
 
-    // TODO(Task 4): attendanceDate pasa a derivarse de la jornada; este cast se elimina al reescribir este bloque.
-    const attendanceDate = this.toDateOnly(
-      createEventTicketDto.attendanceDate as Date,
-    );
+    let session: EventSession | null = null;
+    let attendanceDate: string;
+
+    if (event.hasSessions) {
+      if (!createEventTicketDto.sessionId) {
+        throw new BadRequestException(
+          'Debes seleccionar una jornada para este evento',
+        );
+      }
+
+      session = this.getSessionForEvent(event, createEventTicketDto.sessionId);
+      attendanceDate = this.toDateOnly(session.date);
+    } else {
+      if (createEventTicketDto.sessionId) {
+        throw new BadRequestException('Este evento no usa jornadas por dia');
+      }
+
+      if (!createEventTicketDto.attendanceDate) {
+        throw new BadRequestException('Debes indicar la fecha de asistencia');
+      }
+
+      attendanceDate = this.toDateOnly(createEventTicketDto.attendanceDate);
+    }
 
     this.assertAttendanceDateInsideEvent(attendanceDate, event);
     this.assertEventCapacityAvailable(event, true, quantity);
 
-    await this.ensureAvailability(
-      ticketType,
-      attendanceDate,
-      undefined,
-      quantity,
-    );
+    if (session) {
+      await this.ensureSessionAvailability(session, ticketType, quantity);
+    } else {
+      await this.ensureAvailability(
+        ticketType,
+        attendanceDate,
+        undefined,
+        quantity,
+      );
+    }
 
     const basePrice = createEventTicketDto.price ?? ticketType.price;
     const unitPrices = this.buildTicketUnitPrices(
@@ -586,6 +609,7 @@ export class EventsService {
         attendeeFirstName: createEventTicketDto.attendeeFirstName.trim(),
         attendeeLastName: createEventTicketDto.attendeeLastName.trim(),
         attendanceDate,
+        sessionId: session?.id ?? null,
         price: unitPrice + menuSelectionResult.snapshot.totalExtraPrice,
         includesDetails,
         menuSelection: menuSelectionResult.normalizedSelection as Record<
@@ -667,9 +691,29 @@ export class EventsService {
       targetTicketTypeId,
     );
 
-    const targetAttendanceDate = this.toDateOnly(
-      updateEventTicketDto.attendanceDate ?? new Date(ticket.attendanceDate),
-    );
+    const targetSessionId =
+      updateEventTicketDto.sessionId ?? ticket.sessionId ?? undefined;
+    let targetSession: EventSession | null = null;
+    let targetAttendanceDate: string;
+
+    if (event.hasSessions) {
+      if (!targetSessionId) {
+        throw new BadRequestException(
+          'Debes seleccionar una jornada para este evento',
+        );
+      }
+
+      targetSession = this.getSessionForEvent(event, targetSessionId);
+      targetAttendanceDate = this.toDateOnly(targetSession.date);
+    } else {
+      if (updateEventTicketDto.sessionId) {
+        throw new BadRequestException('Este evento no usa jornadas por dia');
+      }
+
+      targetAttendanceDate = this.toDateOnly(
+        updateEventTicketDto.attendanceDate ?? new Date(ticket.attendanceDate),
+      );
+    }
 
     const targetStatus = updateEventTicketDto.status ?? ticket.status;
     const isReactivatingTicket =
@@ -680,11 +724,20 @@ export class EventsService {
     this.assertEventCapacityAvailable(event, isReactivatingTicket);
 
     if (targetStatus !== EventTicketStatus.CANCELLED) {
-      await this.ensureAvailability(
-        targetTicketType,
-        targetAttendanceDate,
-        ticket.id,
-      );
+      if (targetSession) {
+        await this.ensureSessionAvailability(
+          targetSession,
+          targetTicketType,
+          1,
+          ticket.id,
+        );
+      } else {
+        await this.ensureAvailability(
+          targetTicketType,
+          targetAttendanceDate,
+          ticket.id,
+        );
+      }
     }
 
     const isChangingTicketType =
@@ -727,6 +780,7 @@ export class EventsService {
         updateEventTicketDto.attendeeLastName?.trim() ??
         ticket.attendeeLastName,
       attendanceDate: targetAttendanceDate,
+      sessionId: targetSession?.id ?? null,
       price: nextBasePrice + menuSelectionResult.snapshot.totalExtraPrice,
       includesDetails: nextIncludesDetails,
       menuSelection: menuSelectionResult.normalizedSelection as Record<
@@ -1786,6 +1840,97 @@ export class EventsService {
       }
 
       const soldTotal = await ticketsTotalQuery.getCount();
+
+      if (soldTotal + quantity > ticketType.totalStock) {
+        throw new BadRequestException(
+          'No hay cupo total disponible para este tipo de ticket',
+        );
+      }
+    }
+  }
+
+  private getSessionForEvent(event: Event, sessionId: string): EventSession {
+    const session = (event.sessions ?? []).find(
+      (item) => item.id === sessionId,
+    );
+
+    if (!session) {
+      throw new BadRequestException(
+        'La jornada seleccionada no pertenece al evento indicado',
+      );
+    }
+
+    return session;
+  }
+
+  private async countActiveTickets(
+    where: { sessionId?: string; ticketTypeId?: string },
+    excludeTicketId?: string,
+  ): Promise<number> {
+    const query = this.eventTicketRepository
+      .createQueryBuilder('ticket')
+      .where('ticket.status = :status', {
+        status: EventTicketStatus.ACTIVE,
+      });
+
+    if (where.sessionId) {
+      query.andWhere('ticket.sessionId = :sessionId', {
+        sessionId: where.sessionId,
+      });
+    }
+
+    if (where.ticketTypeId) {
+      query.andWhere('ticket.ticketTypeId = :ticketTypeId', {
+        ticketTypeId: where.ticketTypeId,
+      });
+    }
+
+    if (excludeTicketId) {
+      query.andWhere('ticket.id <> :excludeTicketId', { excludeTicketId });
+    }
+
+    return query.getCount();
+  }
+
+  private async ensureSessionAvailability(
+    session: EventSession,
+    ticketType: EventTicketType,
+    quantity = 1,
+    excludeTicketId?: string,
+  ): Promise<void> {
+    const soldForSession = await this.countActiveTickets(
+      { sessionId: session.id },
+      excludeTicketId,
+    );
+
+    if (soldForSession + quantity > session.capacity) {
+      throw new BadRequestException(
+        `No hay cupos disponibles para la jornada del ${session.date} a las ${session.startTime}`,
+      );
+    }
+
+    const allocation = (session.allocations ?? []).find(
+      (item) => item.ticketTypeId === ticketType.id,
+    );
+
+    if (allocation) {
+      const soldForType = await this.countActiveTickets(
+        { sessionId: session.id, ticketTypeId: ticketType.id },
+        excludeTicketId,
+      );
+
+      if (soldForType + quantity > allocation.quantity) {
+        throw new BadRequestException(
+          `No hay cupos disponibles para el tipo "${ticketType.name}" en esta jornada`,
+        );
+      }
+    }
+
+    if (ticketType.totalStock !== null) {
+      const soldTotal = await this.countActiveTickets(
+        { ticketTypeId: ticketType.id },
+        excludeTicketId,
+      );
 
       if (soldTotal + quantity > ticketType.totalStock) {
         throw new BadRequestException(
