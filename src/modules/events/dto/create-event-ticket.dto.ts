@@ -12,6 +12,7 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -54,9 +55,14 @@ export class CreateEventTicketDto {
   @MaxLength(120)
   attendeeLastName!: string;
 
+  @IsOptional()
+  @IsUUID()
+  sessionId?: string;
+
+  @ValidateIf((dto: CreateEventTicketDto) => !dto.sessionId)
   @Type(() => Date)
   @IsDate()
-  attendanceDate!: Date;
+  attendanceDate?: Date;
 
   @IsOptional()
   @Type(() => Number)

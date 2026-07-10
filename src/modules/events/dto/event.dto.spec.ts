@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { CreateEventDto } from './create-event.dto';
+import { CreateEventDto, CreateEventSessionDto } from './create-event.dto';
 import { CreateEventTicketDto } from './create-event-ticket.dto';
 import { UpdateEventDto } from './update-event.dto';
 import { UpdateEventStatusDto } from './update-event-status.dto';
@@ -193,5 +193,39 @@ describe('Event DTOs', () => {
     });
     await validate(dto);
     expect(dto.attendanceDate).toBeInstanceOf(Date);
+  });
+
+  describe('CreateEventSessionDto', () => {
+    it('acepta jornada valida', async () => {
+      const dto = plainToInstance(CreateEventSessionDto, {
+        date: '2026-07-09',
+        startTime: '12:00',
+        endTime: '15:00',
+        capacity: 50,
+        allocations: [{ ticketTypeIndex: 0, quantity: 20 }],
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rechaza startTime con formato invalido', async () => {
+      const dto = plainToInstance(CreateEventSessionDto, {
+        date: '2026-07-09',
+        startTime: '25:99',
+        capacity: 50,
+      });
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('rechaza capacity menor a 1', async () => {
+      const dto = plainToInstance(CreateEventSessionDto, {
+        date: '2026-07-09',
+        startTime: '12:00',
+        capacity: 0,
+      });
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    });
   });
 });

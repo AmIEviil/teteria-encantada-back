@@ -54,6 +54,10 @@ export class UpdateEventTicketDto {
   attendeeLastName?: string;
 
   @IsOptional()
+  @IsUUID()
+  sessionId?: string;
+
+  @IsOptional()
   @Type(() => Date)
   @IsDate()
   attendanceDate?: Date;
