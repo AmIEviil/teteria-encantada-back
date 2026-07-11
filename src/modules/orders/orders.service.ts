@@ -680,9 +680,12 @@ export class OrdersService {
         `SUM(CASE WHEN ord.status = :cancelledStatus THEN 1 ELSE 0 END)`,
         'cancelledOrders',
       )
-      .addSelect('COALESCE(SUM(ord.total), 0)', 'totalSales')
       .addSelect(
-        `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total ELSE 0 END), 0)`,
+        `COALESCE(SUM(ord.total + COALESCE(ord."tipAmount", 0)), 0)`,
+        'totalSales',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total + COALESCE(ord."tipAmount", 0) ELSE 0 END), 0)`,
         'paidSales',
       )
       .setParameters({
@@ -718,9 +721,12 @@ export class OrdersService {
         `SUM(CASE WHEN ord.status = :cancelledStatus THEN 1 ELSE 0 END)`,
         'cancelledOrders',
       )
-      .addSelect('COALESCE(SUM(ord.total), 0)', 'totalSales')
       .addSelect(
-        `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total ELSE 0 END), 0)`,
+        `COALESCE(SUM(ord.total + COALESCE(ord."tipAmount", 0)), 0)`,
+        'totalSales',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total + COALESCE(ord."tipAmount", 0) ELSE 0 END), 0)`,
         'paidSales',
       )
       .setParameters({
@@ -765,7 +771,10 @@ export class OrdersService {
     const aggregationRaw = await paidOrdersBaseQuery
       .clone()
       .select('COUNT(ord.id)', 'totalOrders')
-      .addSelect('COALESCE(SUM(ord.total), 0)', 'totalSales')
+      .addSelect(
+        `COALESCE(SUM(ord.total + COALESCE(ord."tipAmount", 0)), 0)`,
+        'totalSales',
+      )
       .addSelect('MAX(ord."updatedAt")', 'lastOrderAt')
       .getRawOne<SummaryAggregationRaw>();
 
