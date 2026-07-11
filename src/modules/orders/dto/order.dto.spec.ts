@@ -47,4 +47,23 @@ describe('Order DTOs', () => {
     const dto = plainToInstance(GetOrdersReportDto, { limit: 999 });
     expect((await validate(dto)).length).toBeGreaterThan(0);
   });
+
+  it('UpdateOrderDto acepta tipAmount y paymentMethod', async () => {
+    const dto = plainToInstance(UpdateOrderDto, {
+      status: 'PAID',
+      tipAmount: 1500,
+      paymentMethod: 'CASH',
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('UpdateOrderDto rechaza tipAmount negativo', async () => {
+    const dto = plainToInstance(UpdateOrderDto, { tipAmount: -1 });
+    expect((await validate(dto)).length).toBeGreaterThan(0);
+  });
+
+  it('UpdateOrderDto rechaza paymentMethod invalido', async () => {
+    const dto = plainToInstance(UpdateOrderDto, { paymentMethod: 'BITCOIN' });
+    expect((await validate(dto)).length).toBeGreaterThan(0);
+  });
 });

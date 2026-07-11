@@ -426,6 +426,14 @@ export class OrdersService {
         order.peopleCount = updateOrderDto.peopleCount;
       }
 
+      if (updateOrderDto.tipAmount !== undefined) {
+        order.tipAmount = updateOrderDto.tipAmount;
+      }
+
+      if (updateOrderDto.paymentMethod !== undefined) {
+        order.paymentMethod = updateOrderDto.paymentMethod;
+      }
+
       const wasPaid = order.status === OrderStatus.PAID;
 
       if (updateOrderDto.status !== undefined) {

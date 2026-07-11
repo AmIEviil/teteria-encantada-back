@@ -3,13 +3,14 @@ import {
   IsArray,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { OrderStatus } from '../entities/order.entity';
+import { OrderPaymentMethod, OrderStatus } from '../entities/order.entity';
 
 export class UpdateOrderItemDto {
   @IsUUID()
@@ -39,6 +40,16 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  tipAmount?: number;
+
+  @IsOptional()
+  @IsEnum(OrderPaymentMethod)
+  paymentMethod?: OrderPaymentMethod;
 
   @IsOptional()
   @IsArray()
