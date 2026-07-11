@@ -12,7 +12,6 @@ type AnyRepo = Record<string, jest.Mock>;
 const buildProduct = (overrides: Partial<Product> = {}): Product =>
   ({
     id: 'prod-1',
-    code: 'P1',
     name: 'Producto',
     description: 'desc',
     price: 10,
@@ -70,7 +69,6 @@ describe('ProductsService', () => {
   describe('create', () => {
     it('lanza BadRequest si min > max', async () => {
       const dto = {
-        code: 'P1',
         name: 'N',
         price: 10,
         minimumQuantity: 20,
@@ -84,7 +82,6 @@ describe('ProductsService', () => {
 
     it('lanza BadRequest si current < min', async () => {
       const dto = {
-        code: 'P1',
         name: 'N',
         price: 10,
         minimumQuantity: 5,
@@ -98,7 +95,6 @@ describe('ProductsService', () => {
 
     it('lanza BadRequest si current > max', async () => {
       const dto = {
-        code: 'P1',
         name: 'N',
         price: 10,
         minimumQuantity: 1,
@@ -112,7 +108,6 @@ describe('ProductsService', () => {
 
     it('crea producto sin imagen', async () => {
       const dto = {
-        code: 'P1',
         name: 'N',
         price: 10,
         minimumQuantity: 1,
@@ -128,10 +123,9 @@ describe('ProductsService', () => {
       expect(productRepo.save).toHaveBeenCalledTimes(1);
     });
 
-    it('traduce error 23505 a Conflict', async () => {
-      productRepo.save.mockRejectedValueOnce(makeQueryFailed('23505'));
+    it('traduce error 23503 a Conflict', async () => {
+      productRepo.save.mockRejectedValueOnce(makeQueryFailed('23503'));
       const dto = {
-        code: 'P1',
         name: 'N',
         price: 10,
         minimumQuantity: 1,
@@ -293,7 +287,7 @@ describe('ProductsService', () => {
 
     it('traduce error db en update', async () => {
       productRepo.findOneBy.mockResolvedValue(buildProduct());
-      productRepo.save.mockRejectedValueOnce(makeQueryFailed('23505'));
+      productRepo.save.mockRejectedValueOnce(makeQueryFailed('23503'));
       await expect(
         service.update('prod-1', { name: 'X' } as never, 'u1'),
       ).rejects.toBeInstanceOf(ConflictException);

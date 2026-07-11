@@ -3,6 +3,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { PublicCreateReservationDto } from './dto/public-create-reservation.dto';
 import { PublicFindReservationsDto } from './dto/public-find-reservations.dto';
 import {
+  PublicEventItem,
   PublicMenuItem,
   PublicReservationItem,
   PublicReservationScheduleItem,
@@ -23,6 +24,11 @@ export class PublicController {
   @Get('tables')
   findTables(): Promise<PublicTableItem[]> {
     return this.publicService.findTables();
+  }
+
+  @Get('events')
+  findEvents(): Promise<PublicEventItem[]> {
+    return this.publicService.findEvents();
   }
 
   @Get('reservations')

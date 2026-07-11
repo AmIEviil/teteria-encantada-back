@@ -6,7 +6,6 @@ import { UpdateProductDto } from './update-product.dto';
 describe('CreateProductDto', () => {
   it('valida un payload correcto', async () => {
     const dto = plainToInstance(CreateProductDto, {
-      code: 'P1',
       name: 'Producto',
       price: 10.5,
       minimumQuantity: 1,
@@ -25,7 +24,6 @@ describe('CreateProductDto', () => {
 
   it('falla con precio negativo', async () => {
     const dto = plainToInstance(CreateProductDto, {
-      code: 'P1',
       name: 'N',
       price: -1,
       minimumQuantity: 0,

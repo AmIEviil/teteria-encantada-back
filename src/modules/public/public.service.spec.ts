@@ -34,7 +34,7 @@ describe('PublicService', () => {
 
   it('findMenu mapea productos activos', async () => {
     productRepo.find.mockResolvedValue([
-      { id: 'p1', code: 'C', name: 'N', description: null, price: 10 },
+      { id: 'p1', name: 'N', description: null, price: 10 },
     ]);
     const result = await service.findMenu();
     expect(result[0].id).toBe('p1');

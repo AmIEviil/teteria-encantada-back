@@ -185,10 +185,6 @@ export class ProductsService {
     if (error instanceof QueryFailedError) {
       const driverError = error.driverError as { code?: string };
 
-      if (driverError?.code === '23505') {
-        throw new ConflictException('Ya existe un producto con ese codigo');
-      }
-
       if (driverError?.code === '23503') {
         throw new ConflictException(
           'No se puede eliminar este producto porque esta asociado a ordenes',

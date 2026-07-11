@@ -14,11 +14,6 @@ import {
 export class CreateProductDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(40)
-  code: string;
-
-  @IsString()
-  @IsNotEmpty()
   @MaxLength(120)
   name: string;
 

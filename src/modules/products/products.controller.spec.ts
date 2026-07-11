@@ -22,8 +22,8 @@ describe('ProductsController', () => {
   });
 
   it('create delega en el servicio', async () => {
-    await controller.create({ code: 'P1' } as never);
-    expect(service.create).toHaveBeenCalledWith({ code: 'P1' });
+    await controller.create({ name: 'P1' } as never);
+    expect(service.create).toHaveBeenCalledWith({ name: 'P1' });
   });
 
   it('findAll delega en el servicio', async () => {
