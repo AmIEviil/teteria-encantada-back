@@ -54,4 +54,50 @@ describe('S3StorageService', () => {
       Key: 'images/abc.png',
     });
   });
+
+  describe('getObjectByUrl', () => {
+    it('descarga el objeto y retorna un Buffer', async () => {
+      async function* gen() {
+        yield Buffer.from('PDFBYTES');
+      }
+      send.mockResolvedValue({ Body: gen() });
+      const service = buildService();
+      const buf = await service.getObjectByUrl(
+        'https://test-bucket.s3.us-east-1.amazonaws.com/images/abc.png',
+      );
+      expect(buf.toString()).toBe('PDFBYTES');
+      const cmd = send.mock.calls[0][0];
+      expect(cmd.input.Key).toBe('images/abc.png');
+    });
+
+    it('hace round-trip con la URL real generada por publicUrl()', async () => {
+      async function* gen() {
+        yield Buffer.from('ROUNDTRIP');
+      }
+      send.mockResolvedValue({ Body: gen() });
+      const service = buildService();
+      const key = 'tickets/templates/xyz.png';
+      const url = service.publicUrl(key);
+      const buf = await service.getObjectByUrl(url);
+      expect(buf.toString()).toBe('ROUNDTRIP');
+      const cmd = send.mock.calls[0][0];
+      expect(cmd.input.Key).toBe(key);
+    });
+
+    it('deriva el key correctamente cuando AWS_S3_PUBLIC_URL_BASE está seteado', async () => {
+      process.env.AWS_S3_PUBLIC_URL_BASE = 'https://cdn.example.com/assets/';
+      async function* gen() {
+        yield Buffer.from('CDNBYTES');
+      }
+      send.mockResolvedValue({ Body: gen() });
+      const service = buildService();
+      const key = 'images/abc.png';
+      const url = service.publicUrl(key);
+      expect(url).toBe('https://cdn.example.com/assets/images/abc.png');
+      const buf = await service.getObjectByUrl(url);
+      expect(buf.toString()).toBe('CDNBYTES');
+      const cmd = send.mock.calls[0][0];
+      expect(cmd.input.Key).toBe(key);
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -43,5 +44,27 @@ export class S3StorageService {
     }
     const region = process.env.AWS_REGION ?? 'us-east-1';
     return `https://${this.bucket}.s3.${region}.amazonaws.com/${key}`;
+  }
+
+  async getObjectByUrl(url: string): Promise<Buffer> {
+    const key = this.keyFromUrl(url);
+    const res = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    const chunks: Buffer[] = [];
+    // Body es un stream legible (Node)
+    for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  private keyFromUrl(url: string): string {
+    const base = process.env.AWS_S3_PUBLIC_URL_BASE?.replace(/\/+$/, '');
+    if (base && url.startsWith(base)) {
+      return url.slice(base.length + 1);
+    }
+    // https://<bucket>.s3.<region>.amazonaws.com/<key>
+    return new URL(url).pathname.replace(/^\/+/, '');
   }
 }
