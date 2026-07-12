@@ -34,7 +34,11 @@ import {
 import { UpdateOrderDto, UpdateOrderItemDto } from './dto/update-order.dto';
 import { MonthlyTableSalesSummary } from './entities/monthly-table-sales-summary.entity';
 import { OrderItem } from './entities/order-item.entity';
-import { Order, OrderStatus } from './entities/order.entity';
+import {
+  Order,
+  OrderPaymentMethod,
+  OrderStatus,
+} from './entities/order.entity';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 
 interface NormalizedReportFilters {
@@ -64,6 +68,10 @@ interface TotalsRaw {
   cancelledOrders: string;
   totalSales: string;
   paidSales: string;
+  paidWithTip: string;
+  paidWithoutTip: string;
+  paidCash: string;
+  paidCard: string;
 }
 
 interface SummaryAggregationRaw {
@@ -729,9 +737,27 @@ export class OrdersService {
         `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total + COALESCE(ord."tipAmount", 0) ELSE 0 END), 0)`,
         'paidSales',
       )
+      .addSelect(
+        `SUM(CASE WHEN ord.status = :paidStatus AND COALESCE(ord."tipAmount", 0) > 0 THEN 1 ELSE 0 END)`,
+        'paidWithTip',
+      )
+      .addSelect(
+        `SUM(CASE WHEN ord.status = :paidStatus AND COALESCE(ord."tipAmount", 0) = 0 THEN 1 ELSE 0 END)`,
+        'paidWithoutTip',
+      )
+      .addSelect(
+        `SUM(CASE WHEN ord.status = :paidStatus AND ord."paymentMethod" = :cashMethod THEN 1 ELSE 0 END)`,
+        'paidCash',
+      )
+      .addSelect(
+        `SUM(CASE WHEN ord.status = :paidStatus AND ord."paymentMethod" = :cardMethod THEN 1 ELSE 0 END)`,
+        'paidCard',
+      )
       .setParameters({
         paidStatus: OrderStatus.PAID,
         cancelledStatus: OrderStatus.CANCELLED,
+        cashMethod: OrderPaymentMethod.CASH,
+        cardMethod: OrderPaymentMethod.CARD,
       })
       .getRawOne<TotalsRaw>();
 
@@ -741,6 +767,10 @@ export class OrdersService {
       cancelledOrders: Number(totalsRaw?.cancelledOrders ?? 0),
       totalSales: this.toMoney(Number(totalsRaw?.totalSales ?? 0)),
       paidSales: this.toMoney(Number(totalsRaw?.paidSales ?? 0)),
+      paidWithTip: Number(totalsRaw?.paidWithTip ?? 0),
+      paidWithoutTip: Number(totalsRaw?.paidWithoutTip ?? 0),
+      paidCash: Number(totalsRaw?.paidCash ?? 0),
+      paidCard: Number(totalsRaw?.paidCard ?? 0),
     };
   }
 

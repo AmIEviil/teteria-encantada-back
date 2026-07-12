@@ -546,6 +546,10 @@ describe('OrdersService', () => {
         cancelledOrders: '0',
         totalSales: '10',
         paidSales: '10',
+        paidWithTip: '1',
+        paidWithoutTip: '0',
+        paidCash: '0',
+        paidCard: '1',
       });
       orderRepo.find.mockResolvedValue([{ id: 'o1' }]);
     };
@@ -565,6 +569,10 @@ describe('OrdersService', () => {
       });
       expect(result.items).toHaveLength(1);
       expect(result.totals.totalOrders).toBe(1);
+      expect(result.totals.paidWithTip).toBe(1);
+      expect(result.totals.paidWithoutTip).toBe(0);
+      expect(result.totals.paidCash).toBe(0);
+      expect(result.totals.paidCard).toBe(1);
       expect(result.monthlySummary).toHaveLength(1);
     });
 
