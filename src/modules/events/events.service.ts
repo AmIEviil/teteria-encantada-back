@@ -2082,10 +2082,16 @@ export class EventsService {
           available: event.isFreeEntry || remaining === null || remaining > 0,
         });
       }
-      const sessionRemaining = perType.reduce<number | null>((acc, pt) => {
-        if (pt.remaining === null) return acc;
-        return acc === null ? pt.remaining : Math.min(acc, pt.remaining);
-      }, null);
+      // remaining a nivel jornada = mejor disponibilidad entre tipos.
+      // null solo si algún tipo es ilimitado; si no, el máximo de los remanentes.
+      let sessionRemaining: number | null = 0;
+      for (const pt of perType) {
+        if (pt.remaining === null) {
+          sessionRemaining = null;
+          break;
+        }
+        sessionRemaining = Math.max(sessionRemaining, pt.remaining);
+      }
       sessions.push({
         id: s.id,
         date: s.date,
@@ -2094,8 +2100,7 @@ export class EventsService {
         name: s.name ?? null,
         remaining: sessionRemaining,
         available:
-          event.isFreeEntry ||
-          perType.some((pt) => pt.available),
+          event.isFreeEntry || sessionRemaining === null || sessionRemaining > 0,
         ticketTypes: perType,
       });
     }

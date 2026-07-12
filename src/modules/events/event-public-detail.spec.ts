@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { EventsService } from './events.service';
 
 // Typed as `any` (not `EventsService & Record<string, any>`) so that stubbing
@@ -62,5 +63,110 @@ describe('getRemainingForType', () => {
     const svc = makeService(4);
     const ticketType: any = { id: 't1', dailyStocks: [], totalStock: 10 };
     await expect(svc.getRemainingForType(ticketType, '2026-08-01')).resolves.toBe(6);
+  });
+
+  it('returns quantity minus sold when the day matches a configured dailyStock entry', async () => {
+    // makeService(3) stubs both the day-count path (getCount) and the
+    // totalStock path (countActiveTickets) to resolve 3; totalStock is null
+    // here so only the daily-stock layer applies: 8 - 3 = 5.
+    const svc = makeService(3);
+    const ticketType: any = {
+      id: 't1',
+      dailyStocks: [{ date: '2026-08-01', quantity: 8 }],
+      totalStock: null,
+    };
+    await expect(
+      svc.getRemainingForType(ticketType, '2026-08-01'),
+    ).resolves.toBe(5);
+  });
+});
+
+describe('getPublicDetail', () => {
+  it('keeps session remaining/available consistent and does not leak internal fields', async () => {
+    const svc: AnyService = Object.create(EventsService.prototype);
+
+    const soldOutType: any = {
+      id: 'tt-sold-out',
+      name: 'Sold out',
+      description: null,
+      price: 1000,
+      includesDetails: null,
+      menuMode: 'FIXED',
+      menuTemplate: null,
+      isPromotional: true,
+      promoMinQuantity: 2,
+      promoBundlePrice: 1500,
+    };
+    const availableType: any = {
+      id: 'tt-available',
+      name: 'Available',
+      description: null,
+      price: 2000,
+      includesDetails: null,
+      menuMode: 'FIXED',
+      menuTemplate: null,
+      isPromotional: false,
+      promoMinQuantity: null,
+      promoBundlePrice: null,
+    };
+    const session: any = {
+      id: 's1',
+      date: '2026-08-01',
+      startTime: '10:00',
+      endTime: null,
+      name: null,
+      allocations: [],
+    };
+    const event: any = {
+      id: 'evt-1',
+      title: 'Evento',
+      description: null,
+      startsAt: new Date('2026-08-01T10:00:00.000Z'),
+      endsAt: new Date('2026-08-01T12:00:00.000Z'),
+      officialImageUrl: null,
+      status: 'ENABLED',
+      isFreeEntry: false,
+      hasSessions: true,
+      soldTickets: 5,
+      totalTickets: 10,
+      ticketTypes: [soldOutType, availableType],
+      sessions: [session],
+    };
+
+    svc.findOne = jest.fn().mockResolvedValue(event);
+    svc.getRemainingForType = jest
+      .fn()
+      .mockImplementation(async (t: any) => (t.id === 'tt-sold-out' ? 0 : 5));
+    svc.getRemainingForSession = jest
+      .fn()
+      .mockImplementation(async (_s: any, t: any) =>
+        t.id === 'tt-sold-out' ? 0 : 5,
+      );
+
+    const result = await svc.getPublicDetail('evt-1');
+
+    expect(result.sessions).toHaveLength(1);
+    const sessionResult = result.sessions[0];
+
+    // Fix under test: remaining and available must agree with each other.
+    expect(sessionResult.remaining).toBeGreaterThan(0);
+    expect(sessionResult.available).toBe(true);
+
+    for (const tt of [...result.ticketTypes, ...sessionResult.ticketTypes]) {
+      expect(tt).not.toHaveProperty('isPromotional');
+      expect(tt).not.toHaveProperty('promoMinQuantity');
+      expect(tt).not.toHaveProperty('promoBundlePrice');
+    }
+    expect(result).not.toHaveProperty('soldTickets');
+    expect(result).not.toHaveProperty('totalTickets');
+  });
+
+  it('throws NotFoundException for a non-ENABLED event', async () => {
+    const svc: AnyService = Object.create(EventsService.prototype);
+    svc.findOne = jest.fn().mockResolvedValue({ status: 'CANCELLED' });
+
+    await expect(svc.getPublicDetail('evt-2')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });
