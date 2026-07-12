@@ -5,6 +5,8 @@ import { PublicService } from './public.service';
 import { Product } from '../products/entities/product.entity';
 import { RestaurantTable } from '../layouts/entities/restaurant-table.entity';
 import { ReservationsService } from '../reservations/reservations.service';
+import { Event } from '../events/entities/event.entity';
+import { EventsService } from '../events/events.service';
 
 describe('PublicService', () => {
   let service: PublicService;
@@ -27,6 +29,14 @@ describe('PublicService', () => {
         { provide: getRepositoryToken(Product), useValue: productRepo },
         { provide: getRepositoryToken(RestaurantTable), useValue: tableRepo },
         { provide: ReservationsService, useValue: reservationsService },
+        {
+          provide: getRepositoryToken(Event),
+          useValue: { find: jest.fn(), findOne: jest.fn() },
+        },
+        {
+          provide: EventsService,
+          useValue: { getPublicDetail: jest.fn(), createPublicTickets: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(PublicService);
