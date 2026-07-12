@@ -115,16 +115,14 @@ export class PaymentsService {
       return;
     }
 
-    if (outcome === 'rejected') {
-      // Condicional: si ya fue fulfillado (PAID) por otro camino, no lo
-      // rebajamos a REJECTED aunque llegue un webhook tardío/duplicado.
-      await this.purchaseRepository.update(
-        { id: payment.externalReference, status: EventPurchaseStatus.PENDING },
-        { status: EventPurchaseStatus.REJECTED },
-      );
-    }
-
-    // pending/in_process: no-op, se espera el próximo webhook.
+    // No-approved (rejected/pending/in_process/cualquier otro): el webhook
+    // NUNCA rechaza terminalmente. A diferencia del cobro inline en pay(),
+    // que es una respuesta síncrona y definitiva, un webhook puede llegar
+    // con un status intermedio (p.ej. 'in_mediation') antes de uno
+    // 'approved' posterior para el mismo pago. Si aquí escribiéramos
+    // REJECTED, dejaríamos la fila en un estado terminal y bloquearíamos
+    // para siempre el fulfill del webhook 'approved' que llegue después.
+    // Se deja la fila PENDING y no se hace nada: se espera el próximo webhook.
   }
 
   // Mapea el status crudo de MP a un resultado de 3 vías. Cualquier valor no
@@ -159,16 +157,30 @@ export class PaymentsService {
       return null;
     }
 
-    const result = await this.eventsService.createPublicTickets(purchase.eventId, {
-      buyerEmail: purchase.buyerEmail,
-      items: purchase.itemsSnapshot.map((s) => this.fromSnapshot(s)),
-    });
+    let result: PublicPurchaseResult;
+    try {
+      result = await this.eventsService.createPublicTickets(purchase.eventId, {
+        buyerEmail: purchase.buyerEmail,
+        items: purchase.itemsSnapshot.map((s) => this.fromSnapshot(s)),
+      });
 
-    // enlazar tickets con la compra
-    await this.ticketRepository.update(
-      result.tickets.map((t) => t.id),
-      { purchaseId },
-    );
+      // enlazar tickets con la compra
+      await this.ticketRepository.update(
+        result.tickets.map((t) => t.id),
+        { purchaseId },
+      );
+    } catch (err) {
+      // Ya reclamamos la fila (PAID) pero la creación/enlace de tickets
+      // falló: si dejáramos la fila en PAID quedaría cobrada y sin tickets
+      // para siempre (el próximo webhook vería affected === 0 y no
+      // reintentaría nada). Revertimos a PENDING para que un webhook
+      // 'approved' posterior pueda reclamarla de nuevo y reintentar.
+      await this.purchaseRepository.update(
+        { id: purchaseId },
+        { status: EventPurchaseStatus.PENDING },
+      );
+      throw err;
+    }
 
     await this.sendTicketsEmail(purchase, result);
     return result;

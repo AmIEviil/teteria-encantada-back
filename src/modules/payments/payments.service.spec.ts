@@ -257,6 +257,106 @@ describe('PaymentsService', () => {
 
       expect(events.createPublicTickets).not.toHaveBeenCalled();
     });
+
+    it('webhook con status no aprobado (p.ej. in_mediation) sobre una compra PENDING no rechaza terminalmente ni crea tickets', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        buyerEmail: 'b@t.cl',
+        itemsSnapshot: [{ ticketTypeId: 'tt1', sessionId: null, attendanceDate: '2026-08-01', attendeeFirstName: 'A', attendeeLastName: 'B', menuSelection: null }],
+        status: EventPurchaseStatus.PENDING,
+      });
+      const svc = build();
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'in_mediation',
+        statusDetail: 'pending_review',
+        externalReference: 'p1',
+      });
+
+      await svc.handleWebhook('mp1');
+
+      expect(events.createPublicTickets).not.toHaveBeenCalled();
+      expect(mailer.send).not.toHaveBeenCalled();
+      // No debe escribir REJECTED (ni ningún otro update): el webhook no
+      // rechaza terminalmente, sólo hace no-op y espera un webhook posterior.
+      expect(purchaseRepo.update).not.toHaveBeenCalled();
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PENDING);
+    });
+
+    it("webhook con status 'rejected' sobre una compra PENDING tampoco rechaza terminalmente (no-op)", async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        buyerEmail: 'b@t.cl',
+        itemsSnapshot: [{ ticketTypeId: 'tt1', sessionId: null, attendanceDate: '2026-08-01', attendeeFirstName: 'A', attendeeLastName: 'B', menuSelection: null }],
+        status: EventPurchaseStatus.PENDING,
+      });
+      const svc = build();
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'rejected',
+        statusDetail: 'cc_rejected',
+        externalReference: 'p1',
+      });
+
+      await svc.handleWebhook('mp1');
+
+      expect(events.createPublicTickets).not.toHaveBeenCalled();
+      expect(purchaseRepo.update).not.toHaveBeenCalled();
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PENDING);
+    });
+  });
+
+  describe('recuperación tras fulfill fallido (post-claim)', () => {
+    it('createPublicTickets falla tras el claim: revierte la compra a PENDING, propaga el error y no envía correo', async () => {
+      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'ok' });
+      events.createPublicTickets.mockRejectedValueOnce(new Error('boom'));
+      const svc = build();
+
+      await expect(svc.pay('e1', basePayInput)).rejects.toThrow('boom');
+
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PENDING);
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(ticketRepo.update).not.toHaveBeenCalled();
+
+      // La compra debe haber sido explícitamente revertida a PENDING (no es
+      // sólo que nunca llegó a PAID: el claim sí la marcó PAID antes de que
+      // createPublicTickets fallara).
+      const revertCall = (purchaseRepo.update as jest.Mock).mock.calls.find(
+        ([criteria, patch]) =>
+          typeof criteria === 'object' &&
+          criteria !== null &&
+          Object.keys(criteria as object).length === 1 &&
+          (criteria as Record<string, unknown>).id === 'p1' &&
+          (patch as Record<string, unknown>).status === EventPurchaseStatus.PENDING,
+      );
+      expect(revertCall).toBeDefined();
+    });
+
+    it('tras un fulfill fallido, un webhook approved posterior recupera la compra: crea tickets y envía correo una sola vez', async () => {
+      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'ok' });
+      events.createPublicTickets.mockRejectedValueOnce(new Error('boom'));
+      const svc = build();
+
+      await expect(svc.pay('e1', basePayInput)).rejects.toThrow('boom');
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PENDING);
+
+      events.createPublicTickets.mockClear();
+      mailer.send.mockClear();
+      ticketRepo.update.mockClear();
+
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+        externalReference: 'p1',
+      });
+
+      await svc.handleWebhook('mp1');
+
+      expect(events.createPublicTickets).toHaveBeenCalledTimes(1);
+      expect(mailer.send).toHaveBeenCalledTimes(1);
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
+    });
   });
 
   describe('concurrencia de fulfill', () => {
