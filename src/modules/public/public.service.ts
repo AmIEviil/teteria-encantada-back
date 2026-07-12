@@ -1,6 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
+import { Event, EventStatus } from '../events/entities/event.entity';
+import { EventsService } from '../events/events.service';
+import type {
+  PublicEventDetail,
+  PublicPurchaseResult,
+} from '../events/events.service';
 import {
   RestaurantTable,
   TableStatus,
@@ -11,10 +17,10 @@ import { Reservation } from '../reservations/entities/reservation.entity';
 import { ReservationsService } from '../reservations/reservations.service';
 import { PublicCreateReservationDto } from './dto/public-create-reservation.dto';
 import { PublicFindReservationsDto } from './dto/public-find-reservations.dto';
+import { PublicPurchaseDto } from './dto/public-purchase.dto';
 
 export interface PublicMenuItem {
   id: string;
-  code: string;
   name: string;
   description: string | null;
   price: number;
@@ -52,6 +58,22 @@ export interface PublicReservationScheduleItem {
   closesAt: string | null;
 }
 
+export interface PublicEventScheduleItem {
+  date: string;
+  startTime: string;
+  endTime: string | null;
+}
+
+export interface PublicEventItem {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  schedules: PublicEventScheduleItem[];
+  ticketsAvailable: boolean;
+}
+
 @Injectable()
 export class PublicService {
   constructor(
@@ -59,8 +81,21 @@ export class PublicService {
     private readonly productRepository: Repository<Product>,
     @InjectRepository(RestaurantTable)
     private readonly tableRepository: Repository<RestaurantTable>,
+    @InjectRepository(Event)
+    private readonly eventRepository: Repository<Event>,
     private readonly reservationsService: ReservationsService,
+    private readonly eventsService: EventsService,
   ) {}
+
+  async findEvents(): Promise<PublicEventItem[]> {
+    const events = await this.eventRepository.find({
+      where: { status: EventStatus.ENABLED },
+      relations: { sessions: true },
+      order: { startsAt: 'DESC' }, // más reciente -> más antiguo
+    });
+
+    return events.map((event) => this.toPublicEvent(event));
+  }
 
   async findMenu(): Promise<PublicMenuItem[]> {
     const products = await this.productRepository.find({
@@ -70,7 +105,6 @@ export class PublicService {
 
     return products.map((product) => ({
       id: product.id,
-      code: product.code,
       name: product.name,
       description: product.description,
       price: product.price,
@@ -120,6 +154,24 @@ export class PublicService {
     return this.toPublicReservation(reservation);
   }
 
+  findEvent(id: string): Promise<PublicEventDetail> {
+    return this.eventsService.getPublicDetail(id);
+  }
+
+  purchase(id: string, dto: PublicPurchaseDto): Promise<PublicPurchaseResult> {
+    return this.eventsService.createPublicTickets(id, {
+      buyerEmail: dto.buyerEmail,
+      items: dto.items.map((item) => ({
+        ticketTypeId: item.ticketTypeId,
+        sessionId: item.sessionId,
+        attendanceDate: item.attendanceDate,
+        attendeeFirstName: item.attendeeFirstName,
+        attendeeLastName: item.attendeeLastName,
+        menuSelection: item.menuSelection,
+      })),
+    });
+  }
+
   private toPublicReservation(reservation: Reservation): PublicReservationItem {
     return {
       id: reservation.id,
@@ -137,6 +189,40 @@ export class PublicService {
       status: reservation.status,
       createdAt: reservation.createdAt,
     };
+  }
+
+  private toPublicEvent(event: Event): PublicEventItem {
+    const schedules = (event.sessions ?? [])
+      .slice()
+      .sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) ||
+          a.startTime.localeCompare(b.startTime),
+      )
+      .map((session) => ({
+        date: session.date,
+        startTime: session.startTime,
+        endTime: session.endTime,
+      }));
+
+    return {
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      schedules,
+      ticketsAvailable: this.hasTicketsAvailable(event),
+    };
+  }
+
+  private hasTicketsAvailable(event: Event): boolean {
+    // ponytail: chequeo a nivel de evento. Un día/jornada puntual puede estar
+    // agotado aunque esto siga en true. Reflejar ensureAvailability por
+    // tipo/día/sesión si se necesita esa precisión.
+    if (event.isFreeEntry) return true;
+    if (event.totalTickets === 0) return true; // sin cupo definido = sin límite
+    return event.soldTickets < event.totalTickets;
   }
 
   private toPublicSchedule(

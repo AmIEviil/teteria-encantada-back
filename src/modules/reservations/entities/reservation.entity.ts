@@ -7,12 +7,21 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Image } from '../../images/entities/image.entity';
 import { RestaurantTable } from '../../layouts/entities/restaurant-table.entity';
 
 export enum ReservationStatus {
   ACTIVE = 'ACTIVE',
   CANCELLED = 'CANCELLED',
   COMPLETED = 'COMPLETED',
+}
+
+export enum ReservationConfirmationStatus {
+  NOT_SENT = 'NOT_SENT',
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  DECLINED = 'DECLINED',
+  NO_RESPONSE = 'NO_RESPONSE',
 }
 
 @Entity('reservations')
@@ -60,6 +69,26 @@ export class Reservation {
     default: ReservationStatus.ACTIVE,
   })
   status: ReservationStatus;
+
+  @Column({
+    type: 'enum',
+    enum: ReservationConfirmationStatus,
+    default: ReservationConfirmationStatus.NOT_SENT,
+  })
+  confirmationStatus: ReservationConfirmationStatus;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  confirmationSentAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  confirmationRespondedAt: Date | null;
+
+  @Column({ name: 'comprobante_image_id', type: 'uuid', nullable: true })
+  comprobanteImageId: string | null;
+
+  @ManyToOne(() => Image, { nullable: true, eager: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'comprobante_image_id' })
+  comprobanteImage: Image | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

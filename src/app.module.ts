@@ -7,12 +7,17 @@ import { LayoutsModule } from './modules/layouts/layouts.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ProductsModule } from './modules/products/products.module';
+import { ImagesModule } from './modules/images/images.module';
 import { ReservationsModule } from './modules/reservations/reservations.module';
 import { MigrationsModule } from './modules/migrations/migrations.module';
 import { EventsModule } from './modules/events/events.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
 import { PublicModule } from './modules/public/public.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -38,6 +43,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
         process.env.DB_LOGGING === 'true' ? ['error', 'warn'] : ['error'],
     }),
     ProductsModule,
+    ImagesModule,
     LayoutsModule,
     OrdersModule,
     ReservationsModule,
@@ -46,6 +52,10 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     PublicModule,
     AuthModule,
     MigrationsModule,
+    ScheduleModule.forRoot(),
+    WhatsappModule,
+    RealtimeModule,
+    LoyaltyModule,
   ],
   controllers: [AppController],
   providers: [

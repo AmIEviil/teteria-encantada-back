@@ -34,7 +34,12 @@ import {
 import { UpdateOrderDto, UpdateOrderItemDto } from './dto/update-order.dto';
 import { MonthlyTableSalesSummary } from './entities/monthly-table-sales-summary.entity';
 import { OrderItem } from './entities/order-item.entity';
-import { Order, OrderStatus } from './entities/order.entity';
+import {
+  Order,
+  OrderPaymentMethod,
+  OrderStatus,
+} from './entities/order.entity';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 
 interface NormalizedReportFilters {
   tableId?: string;
@@ -63,6 +68,10 @@ interface TotalsRaw {
   cancelledOrders: string;
   totalSales: string;
   paidSales: string;
+  paidWithTip: string;
+  paidWithoutTip: string;
+  paidCash: string;
+  paidCard: string;
 }
 
 interface SummaryAggregationRaw {
@@ -90,6 +99,7 @@ export class OrdersService {
     private readonly reservationRepository: Repository<Reservation>,
     @InjectRepository(MonthlyTableSalesSummary)
     private readonly monthlySummaryRepository: Repository<MonthlyTableSalesSummary>,
+    private readonly loyaltyService: LoyaltyService,
   ) {}
 
   private static readonly ACTIVE_ORDER_STATUSES: OrderStatus[] = [
@@ -424,6 +434,16 @@ export class OrdersService {
         order.peopleCount = updateOrderDto.peopleCount;
       }
 
+      if (updateOrderDto.tipAmount !== undefined) {
+        order.tipAmount = updateOrderDto.tipAmount;
+      }
+
+      if (updateOrderDto.paymentMethod !== undefined) {
+        order.paymentMethod = updateOrderDto.paymentMethod;
+      }
+
+      const wasPaid = order.status === OrderStatus.PAID;
+
       if (updateOrderDto.status !== undefined) {
         order.status = updateOrderDto.status;
 
@@ -438,6 +458,21 @@ export class OrdersService {
       }
 
       const savedOrder = await transactionalOrderRepository.save(order);
+
+      // Fidelización: devengar puntos sólo en la transición a PAID y con cliente registrado.
+      // wasPaid evita re-devengar si la orden ya estaba pagada.
+      if (
+        !wasPaid &&
+        savedOrder.status === OrderStatus.PAID &&
+        savedOrder.userId
+      ) {
+        await this.loyaltyService.earnPurchase(
+          savedOrder.userId,
+          savedOrder.id,
+          savedOrder.total,
+          entityManager,
+        );
+      }
 
       if (order.tableId) {
         await this.syncTableStatusWithActiveOrders(
@@ -653,9 +688,12 @@ export class OrdersService {
         `SUM(CASE WHEN ord.status = :cancelledStatus THEN 1 ELSE 0 END)`,
         'cancelledOrders',
       )
-      .addSelect('COALESCE(SUM(ord.total), 0)', 'totalSales')
       .addSelect(
-        `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total ELSE 0 END), 0)`,
+        `COALESCE(SUM(ord.total + COALESCE(ord."tipAmount", 0)), 0)`,
+        'totalSales',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total + COALESCE(ord."tipAmount", 0) ELSE 0 END), 0)`,
         'paidSales',
       )
       .setParameters({
@@ -691,14 +729,35 @@ export class OrdersService {
         `SUM(CASE WHEN ord.status = :cancelledStatus THEN 1 ELSE 0 END)`,
         'cancelledOrders',
       )
-      .addSelect('COALESCE(SUM(ord.total), 0)', 'totalSales')
       .addSelect(
-        `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total ELSE 0 END), 0)`,
+        `COALESCE(SUM(ord.total + COALESCE(ord."tipAmount", 0)), 0)`,
+        'totalSales',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN ord.status = :paidStatus THEN ord.total + COALESCE(ord."tipAmount", 0) ELSE 0 END), 0)`,
         'paidSales',
+      )
+      .addSelect(
+        `SUM(CASE WHEN ord.status = :paidStatus AND COALESCE(ord."tipAmount", 0) > 0 THEN 1 ELSE 0 END)`,
+        'paidWithTip',
+      )
+      .addSelect(
+        `SUM(CASE WHEN ord.status = :paidStatus AND COALESCE(ord."tipAmount", 0) = 0 THEN 1 ELSE 0 END)`,
+        'paidWithoutTip',
+      )
+      .addSelect(
+        `SUM(CASE WHEN ord.status = :paidStatus AND ord."paymentMethod" = :cashMethod THEN 1 ELSE 0 END)`,
+        'paidCash',
+      )
+      .addSelect(
+        `SUM(CASE WHEN ord.status = :paidStatus AND ord."paymentMethod" = :cardMethod THEN 1 ELSE 0 END)`,
+        'paidCard',
       )
       .setParameters({
         paidStatus: OrderStatus.PAID,
         cancelledStatus: OrderStatus.CANCELLED,
+        cashMethod: OrderPaymentMethod.CASH,
+        cardMethod: OrderPaymentMethod.CARD,
       })
       .getRawOne<TotalsRaw>();
 
@@ -708,6 +767,10 @@ export class OrdersService {
       cancelledOrders: Number(totalsRaw?.cancelledOrders ?? 0),
       totalSales: this.toMoney(Number(totalsRaw?.totalSales ?? 0)),
       paidSales: this.toMoney(Number(totalsRaw?.paidSales ?? 0)),
+      paidWithTip: Number(totalsRaw?.paidWithTip ?? 0),
+      paidWithoutTip: Number(totalsRaw?.paidWithoutTip ?? 0),
+      paidCash: Number(totalsRaw?.paidCash ?? 0),
+      paidCard: Number(totalsRaw?.paidCard ?? 0),
     };
   }
 
@@ -738,7 +801,10 @@ export class OrdersService {
     const aggregationRaw = await paidOrdersBaseQuery
       .clone()
       .select('COUNT(ord.id)', 'totalOrders')
-      .addSelect('COALESCE(SUM(ord.total), 0)', 'totalSales')
+      .addSelect(
+        `COALESCE(SUM(ord.total + COALESCE(ord."tipAmount", 0)), 0)`,
+        'totalSales',
+      )
       .addSelect('MAX(ord."updatedAt")', 'lastOrderAt')
       .getRawOne<SummaryAggregationRaw>();
 

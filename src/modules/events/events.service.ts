@@ -5,13 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   CreateEventTicketDto,
   EventTicketMenuSelectionDto,
 } from './dto/create-event-ticket.dto';
 import {
   CreateEventDto,
+  CreateEventSessionDto,
   CreateEventTicketMenuTemplateDto,
   CreateEventTicketTypeDto,
 } from './dto/create-event.dto';
@@ -24,6 +25,7 @@ import {
 } from './dto/update-event-ticket.dto';
 import {
   UpdateEventDto,
+  UpdateEventSessionDto,
   UpdateEventTicketMenuTemplateDto,
   UpdateEventTicketTypeDto,
 } from './dto/update-event.dto';
@@ -33,6 +35,9 @@ import {
   EventTicketType,
 } from './entities/event-ticket-type.entity';
 import { EventTicket, EventTicketStatus } from './entities/event-ticket.entity';
+import { EventSession } from './entities/event-session.entity';
+import { EventSessionTicketAllocation } from './entities/event-session-ticket-allocation.entity';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { Event, EventStatus } from './entities/event.entity';
 
 interface NormalizedMenuOption {
@@ -82,6 +87,85 @@ interface MenuSelectionResult {
   };
 }
 
+export interface PublicEventDetailTicketType {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  includesDetails: string | null;
+  menuMode: EventTicketType['menuMode'];
+  menuTemplate: EventTicketType['menuTemplate'];
+  available: boolean;
+  remaining: number | null;
+}
+
+export interface PublicEventDetailSessionTicketType {
+  ticketTypeId: string;
+  available: boolean;
+  remaining: number | null;
+}
+
+export interface PublicEventDetailSession {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string | null;
+  name: string | null;
+  available: boolean;
+  remaining: number | null;
+  seatsRemaining: number; // cupo real compartido de la jornada (capacity - vendidos)
+  ticketTypes: PublicEventDetailSessionTicketType[];
+}
+
+export interface PublicEventDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  officialImageUrl: string | null;
+  isFreeEntry: boolean;
+  hasSessions: boolean;
+  seatsRemaining: number | null; // cupo total del evento sin jornadas; null = ilimitado
+  ticketTypes: PublicEventDetailTicketType[];
+  sessions: PublicEventDetailSession[];
+}
+
+export interface PublicPurchaseItemInput {
+  ticketTypeId: string;
+  sessionId?: string;
+  attendanceDate?: Date;
+  attendeeFirstName: string;
+  attendeeLastName: string;
+  menuSelection?: CreateEventTicketDto['menuSelection'];
+}
+
+export interface PublicPurchaseInput {
+  buyerEmail: string;
+  items: PublicPurchaseItemInput[];
+}
+
+export interface PublicPurchaseTicket {
+  id: string;
+  ticketTypeName: string;
+  attendeeFirstName: string;
+  attendeeLastName: string;
+  attendanceDate: string;
+  sessionId: string | null;
+  price: number;
+  menuExtraPrice: number;
+  includesDetails: string | null;
+  menuSummary: string | null;
+}
+
+export interface PublicPurchaseResult {
+  eventId: string;
+  eventTitle: string;
+  buyerEmail: string;
+  tickets: PublicPurchaseTicket[];
+  total: number;
+}
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -93,12 +177,31 @@ export class EventsService {
     private readonly dailyStockRepository: Repository<EventTicketTypeDailyStock>,
     @InjectRepository(EventTicket)
     private readonly eventTicketRepository: Repository<EventTicket>,
+    private readonly loyaltyService: LoyaltyService,
   ) {}
 
   async create(createEventDto: CreateEventDto): Promise<Event> {
     this.validateEventDates(createEventDto.startsAt, createEventDto.endsAt);
     const isFreeEntry = createEventDto.isFreeEntry ?? false;
+    const hasSessions = createEventDto.hasSessions ?? false;
     const ticketTypes = createEventDto.ticketTypes ?? [];
+    const sessions = createEventDto.sessions ?? [];
+
+    if (hasSessions && isFreeEntry) {
+      throw new BadRequestException(
+        'Un evento de entrada liberada no puede tener jornadas',
+      );
+    }
+
+    if (hasSessions && sessions.length === 0) {
+      throw new BadRequestException('Debes configurar al menos una jornada');
+    }
+
+    if (!hasSessions && sessions.length > 0) {
+      throw new BadRequestException(
+        'No puedes enviar jornadas si el evento no usa jornadas por dia',
+      );
+    }
 
     if (!isFreeEntry && ticketTypes.length === 0) {
       throw new BadRequestException(
@@ -111,12 +214,24 @@ export class EventsService {
         ticketTypes,
         createEventDto.startsAt,
         createEventDto.endsAt,
+        hasSessions,
+      );
+    }
+
+    if (hasSessions) {
+      this.validateEventSessions(
+        sessions,
+        ticketTypes.length,
+        createEventDto.startsAt,
+        createEventDto.endsAt,
       );
     }
 
     const totalTickets = isFreeEntry
       ? 0
-      : this.calculateEventTotalTickets(ticketTypes);
+      : hasSessions
+        ? this.calculateSessionsTotalTickets(sessions)
+        : this.calculateEventTotalTickets(ticketTypes);
 
     const savedEvent = await this.eventRepository.manager.transaction(
       async (entityManager) => {
@@ -136,12 +251,14 @@ export class EventsService {
           totalTickets,
           soldTickets: 0,
           isFreeEntry,
+          hasSessions,
         });
 
         const saved = await eventRepository.save(event);
+        let savedTicketTypes: EventTicketType[] = [];
 
         if (!isFreeEntry && ticketTypes.length > 0) {
-          await eventTicketTypeRepository.save(
+          savedTicketTypes = await eventTicketTypeRepository.save(
             ticketTypes.map((ticketType) => {
               const promotion =
                 this.normalizePromotionConfiguration(ticketType);
@@ -172,6 +289,19 @@ export class EventsService {
           );
         }
 
+        if (hasSessions) {
+          const sessionRepository = entityManager.getRepository(EventSession);
+
+          await sessionRepository.save(
+            this.buildSessionEntities(
+              entityManager,
+              saved.id,
+              sessions,
+              savedTicketTypes,
+            ),
+          );
+        }
+
         return saved;
       },
     );
@@ -184,9 +314,13 @@ export class EventsService {
       .createQueryBuilder('event')
       .leftJoinAndSelect('event.ticketTypes', 'ticketType')
       .leftJoinAndSelect('ticketType.dailyStocks', 'dailyStock')
+      .leftJoinAndSelect('event.sessions', 'session')
+      .leftJoinAndSelect('session.allocations', 'allocation')
       .orderBy('event.startsAt', 'DESC')
       .addOrderBy('ticketType.name', 'ASC')
-      .addOrderBy('dailyStock.date', 'ASC');
+      .addOrderBy('dailyStock.date', 'ASC')
+      .addOrderBy('session.date', 'ASC')
+      .addOrderBy('session.startTime', 'ASC');
 
     if (filters.status) {
       queryBuilder.andWhere('event.status = :status', {
@@ -225,6 +359,9 @@ export class EventsService {
         ticketTypes: {
           dailyStocks: true,
         },
+        sessions: {
+          allocations: true,
+        },
       },
       order: {
         ticketTypes: {
@@ -232,6 +369,10 @@ export class EventsService {
           dailyStocks: {
             date: 'ASC',
           },
+        },
+        sessions: {
+          date: 'ASC',
+          startTime: 'ASC',
         },
       },
     });
@@ -250,6 +391,18 @@ export class EventsService {
     const endsAt = updateEventDto.endsAt ?? event.endsAt;
     const nextIsFreeEntry = updateEventDto.isFreeEntry ?? event.isFreeEntry;
     const isSwitchingToFreeEntry = !event.isFreeEntry && nextIsFreeEntry;
+    const nextHasSessions = updateEventDto.hasSessions ?? event.hasSessions;
+    const isChangingSessionsMode = nextHasSessions !== event.hasSessions;
+
+    if (
+      isChangingSessionsMode &&
+      !nextIsFreeEntry &&
+      !updateEventDto.ticketTypes
+    ) {
+      throw new BadRequestException(
+        'Para cambiar el modo de jornadas debes enviar los tipos de ticket del evento',
+      );
+    }
 
     this.validateEventDates(startsAt, endsAt);
 
@@ -265,11 +418,58 @@ export class EventsService {
       );
     }
 
-    if (updateEventDto.ticketTypes) {
-      this.validateTicketTypes(updateEventDto.ticketTypes, startsAt, endsAt);
+    if (nextHasSessions && nextIsFreeEntry) {
+      throw new BadRequestException(
+        'Un evento de entrada liberada no puede tener jornadas',
+      );
     }
 
-    if (updateEventDto.ticketTypes || isSwitchingToFreeEntry) {
+    if (updateEventDto.sessions && !updateEventDto.ticketTypes) {
+      throw new BadRequestException(
+        'Para actualizar jornadas debes enviar tambien los tipos de ticket',
+      );
+    }
+
+    if (!nextHasSessions && updateEventDto.sessions) {
+      throw new BadRequestException(
+        'No puedes enviar jornadas si el evento no usa jornadas por dia',
+      );
+    }
+
+    if (
+      nextHasSessions &&
+      updateEventDto.ticketTypes &&
+      !updateEventDto.sessions
+    ) {
+      throw new BadRequestException(
+        'Debes enviar las jornadas del evento junto a los tipos de ticket',
+      );
+    }
+
+    if (updateEventDto.ticketTypes) {
+      this.validateTicketTypes(
+        updateEventDto.ticketTypes,
+        startsAt,
+        endsAt,
+        nextHasSessions,
+      );
+    }
+
+    if (updateEventDto.sessions) {
+      this.validateEventSessions(
+        updateEventDto.sessions,
+        updateEventDto.ticketTypes?.length ?? 0,
+        startsAt,
+        endsAt,
+      );
+    }
+
+    if (
+      updateEventDto.ticketTypes ||
+      updateEventDto.sessions ||
+      isSwitchingToFreeEntry ||
+      isChangingSessionsMode
+    ) {
       const existingTickets = await this.eventTicketRepository.countBy({
         eventId: id,
       });
@@ -304,17 +504,29 @@ export class EventsService {
         isFreeEntry: nextIsFreeEntry,
       });
 
+      event.hasSessions = nextIsFreeEntry ? false : nextHasSessions;
+
       if (nextIsFreeEntry) {
         event.totalTickets = 0;
         event.soldTickets = 0;
       } else if (updateEventDto.ticketTypes) {
-        event.totalTickets = this.calculateEventTotalTickets(
-          updateEventDto.ticketTypes,
-        );
+        event.totalTickets = updateEventDto.sessions
+          ? this.calculateSessionsTotalTickets(updateEventDto.sessions)
+          : this.calculateEventTotalTickets(updateEventDto.ticketTypes);
         event.soldTickets = 0;
       }
 
       await eventRepository.save(event);
+
+      const sessionRepository = entityManager.getRepository(EventSession);
+
+      if (
+        nextIsFreeEntry ||
+        updateEventDto.sessions ||
+        isChangingSessionsMode
+      ) {
+        await sessionRepository.delete({ eventId: id });
+      }
 
       if (nextIsFreeEntry) {
         await eventTicketTypeRepository.delete({ eventId: id });
@@ -323,7 +535,7 @@ export class EventsService {
       if (updateEventDto.ticketTypes) {
         await eventTicketTypeRepository.delete({ eventId: id });
 
-        await eventTicketTypeRepository.save(
+        const savedTicketTypes = await eventTicketTypeRepository.save(
           updateEventDto.ticketTypes.map((ticketType) => {
             const promotion = this.normalizePromotionConfiguration(ticketType);
             const menuConfig = this.normalizeMenuConfiguration(ticketType);
@@ -349,6 +561,17 @@ export class EventsService {
             });
           }),
         );
+
+        if (updateEventDto.sessions) {
+          await sessionRepository.save(
+            this.buildSessionEntities(
+              entityManager,
+              id,
+              updateEventDto.sessions,
+              savedTicketTypes,
+            ),
+          );
+        }
       }
     });
 
@@ -391,6 +614,7 @@ export class EventsService {
   async createTicket(
     eventId: string,
     createEventTicketDto: CreateEventTicketDto,
+    opts?: { buyerEmail?: string | null },
   ): Promise<EventTicket[]> {
     const event = await this.findOne(eventId);
     const quantity = createEventTicketDto.quantity ?? 1;
@@ -403,17 +627,43 @@ export class EventsService {
       createEventTicketDto.ticketTypeId,
     );
 
-    const attendanceDate = this.toDateOnly(createEventTicketDto.attendanceDate);
+    let session: EventSession | null = null;
+    let attendanceDate: string;
+
+    if (event.hasSessions) {
+      if (!createEventTicketDto.sessionId) {
+        throw new BadRequestException(
+          'Debes seleccionar una jornada para este evento',
+        );
+      }
+
+      session = this.getSessionForEvent(event, createEventTicketDto.sessionId);
+      attendanceDate = this.toDateOnly(session.date);
+    } else {
+      if (createEventTicketDto.sessionId) {
+        throw new BadRequestException('Este evento no usa jornadas por dia');
+      }
+
+      if (!createEventTicketDto.attendanceDate) {
+        throw new BadRequestException('Debes indicar la fecha de asistencia');
+      }
+
+      attendanceDate = this.toDateOnly(createEventTicketDto.attendanceDate);
+    }
 
     this.assertAttendanceDateInsideEvent(attendanceDate, event);
     this.assertEventCapacityAvailable(event, true, quantity);
 
-    await this.ensureAvailability(
-      ticketType,
-      attendanceDate,
-      undefined,
-      quantity,
-    );
+    if (session) {
+      await this.ensureSessionAvailability(session, ticketType, quantity);
+    } else {
+      await this.ensureAvailability(
+        ticketType,
+        attendanceDate,
+        undefined,
+        quantity,
+      );
+    }
 
     const basePrice = createEventTicketDto.price ?? ticketType.price;
     const unitPrices = this.buildTicketUnitPrices(
@@ -439,9 +689,12 @@ export class EventsService {
       this.eventTicketRepository.create({
         eventId,
         ticketTypeId: ticketType.id,
+        userId: createEventTicketDto.userId ?? null,
         attendeeFirstName: createEventTicketDto.attendeeFirstName.trim(),
         attendeeLastName: createEventTicketDto.attendeeLastName.trim(),
+        buyerEmail: opts?.buyerEmail ?? null,
         attendanceDate,
+        sessionId: session?.id ?? null,
         price: unitPrice + menuSelectionResult.snapshot.totalExtraPrice,
         includesDetails,
         menuSelection: menuSelectionResult.normalizedSelection as Record<
@@ -460,7 +713,94 @@ export class EventsService {
     const savedTickets = await this.eventTicketRepository.save(tickets);
     await this.syncEventSoldTickets(eventId);
 
+    // Fidelización: puntos de asistencia una vez por taller con cliente registrado.
+    if (event.isWorkshop && createEventTicketDto.userId) {
+      await this.loyaltyService.earnAttendance(
+        createEventTicketDto.userId,
+        event.id,
+        event.workshopPoints,
+      );
+    }
+
     return savedTickets;
+  }
+
+  async createPublicTickets(
+    eventId: string,
+    input: PublicPurchaseInput,
+  ): Promise<PublicPurchaseResult> {
+    const created: EventTicket[] = [];
+    try {
+      for (const item of input.items) {
+        const [ticket] = await this.createTicket(
+          eventId,
+          {
+            ticketTypeId: item.ticketTypeId,
+            attendeeFirstName: item.attendeeFirstName,
+            attendeeLastName: item.attendeeLastName,
+            sessionId: item.sessionId,
+            attendanceDate: item.attendanceDate,
+            menuSelection: item.menuSelection,
+            quantity: 1,
+          } as CreateEventTicketDto,
+          { buyerEmail: input.buyerEmail },
+        );
+        created.push(ticket);
+      }
+    } catch (error) {
+      // ponytail: borrado compensatorio, no es una transacción real. Subir a
+      // queryRunner tx si las colisiones concurrentes importan.
+      if (created.length) {
+        await this.eventTicketRepository.delete(created.map((t) => t.id));
+        await this.syncEventSoldTickets(eventId);
+      }
+      throw error;
+    }
+
+    const event = await this.findOne(eventId);
+    return this.toPublicPurchaseResult(event, created, input.buyerEmail);
+  }
+
+  private toPublicPurchaseResult(
+    event: Event,
+    tickets: EventTicket[],
+    buyerEmail: string,
+  ): PublicPurchaseResult {
+    const ticketTypeNameById = new Map(
+      (event.ticketTypes ?? []).map((ticketType) => [
+        ticketType.id,
+        ticketType.name,
+      ]),
+    );
+
+    const mapped = tickets.map((ticket) => ({
+      id: ticket.id,
+      ticketTypeName: ticketTypeNameById.get(ticket.ticketTypeId) ?? '',
+      attendeeFirstName: ticket.attendeeFirstName,
+      attendeeLastName: ticket.attendeeLastName,
+      attendanceDate: this.toDateOnly(ticket.attendanceDate),
+      sessionId: ticket.sessionId ?? null,
+      price: ticket.price,
+      menuExtraPrice: ticket.menuExtraPrice,
+      includesDetails: ticket.includesDetails,
+      menuSummary: ticket.menuSelectionSnapshot
+        ? this.buildMenuSelectionSummary(
+            // ponytail: el snapshot persistido es Record<string, unknown>; el
+            // shape real lo produce resolveMenuSelectionForTicket.
+            ticket.menuSelectionSnapshot as unknown as {
+              groups: MenuSelectionSnapshotGroup[];
+            },
+          )
+        : null,
+    }));
+
+    return {
+      eventId: event.id,
+      eventTitle: event.title,
+      buyerEmail,
+      tickets: mapped,
+      total: mapped.reduce((sum, t) => sum + t.price, 0),
+    };
   }
 
   async findTickets(
@@ -514,9 +854,29 @@ export class EventsService {
       targetTicketTypeId,
     );
 
-    const targetAttendanceDate = this.toDateOnly(
-      updateEventTicketDto.attendanceDate ?? new Date(ticket.attendanceDate),
-    );
+    const targetSessionId =
+      updateEventTicketDto.sessionId ?? ticket.sessionId ?? undefined;
+    let targetSession: EventSession | null = null;
+    let targetAttendanceDate: string;
+
+    if (event.hasSessions) {
+      if (!targetSessionId) {
+        throw new BadRequestException(
+          'Debes seleccionar una jornada para este evento',
+        );
+      }
+
+      targetSession = this.getSessionForEvent(event, targetSessionId);
+      targetAttendanceDate = this.toDateOnly(targetSession.date);
+    } else {
+      if (updateEventTicketDto.sessionId) {
+        throw new BadRequestException('Este evento no usa jornadas por dia');
+      }
+
+      targetAttendanceDate = this.toDateOnly(
+        updateEventTicketDto.attendanceDate ?? new Date(ticket.attendanceDate),
+      );
+    }
 
     const targetStatus = updateEventTicketDto.status ?? ticket.status;
     const isReactivatingTicket =
@@ -527,11 +887,20 @@ export class EventsService {
     this.assertEventCapacityAvailable(event, isReactivatingTicket);
 
     if (targetStatus !== EventTicketStatus.CANCELLED) {
-      await this.ensureAvailability(
-        targetTicketType,
-        targetAttendanceDate,
-        ticket.id,
-      );
+      if (targetSession) {
+        await this.ensureSessionAvailability(
+          targetSession,
+          targetTicketType,
+          1,
+          ticket.id,
+        );
+      } else {
+        await this.ensureAvailability(
+          targetTicketType,
+          targetAttendanceDate,
+          ticket.id,
+        );
+      }
     }
 
     const isChangingTicketType =
@@ -574,6 +943,7 @@ export class EventsService {
         updateEventTicketDto.attendeeLastName?.trim() ??
         ticket.attendeeLastName,
       attendanceDate: targetAttendanceDate,
+      sessionId: targetSession?.id ?? null,
       price: nextBasePrice + menuSelectionResult.snapshot.totalExtraPrice,
       includesDetails: nextIncludesDetails,
       menuSelection: menuSelectionResult.normalizedSelection as Record<
@@ -633,6 +1003,7 @@ export class EventsService {
     ticketTypes: Array<CreateEventTicketTypeDto | UpdateEventTicketTypeDto>,
     startsAt?: Date,
     endsAt?: Date,
+    hasSessions = false,
   ): void {
     const normalizedNames = new Set<string>();
     const eventStartDate = startsAt ? this.toDateOnly(startsAt) : null;
@@ -640,9 +1011,20 @@ export class EventsService {
 
     for (const ticketType of ticketTypes) {
       this.validateTicketTypeName(ticketType, normalizedNames);
-      this.validateTicketTypeCapacityConfig(ticketType);
       this.validateTicketTypePromotion(ticketType);
       this.validateTicketTypeMenuConfiguration(ticketType);
+
+      if (hasSessions) {
+        if ((ticketType.dailyStocks ?? []).length > 0) {
+          throw new BadRequestException(
+            `El tipo de ticket "${ticketType.name}" no debe definir cupos por dia cuando el evento usa jornadas`,
+          );
+        }
+
+        continue;
+      }
+
+      this.validateTicketTypeCapacityConfig(ticketType);
 
       const dailyStockTotal = this.validateTicketTypeDailyStocks(
         ticketType,
@@ -759,6 +1141,108 @@ export class EventsService {
 
       return accumulator;
     }, 0);
+  }
+
+  private validateEventSessions(
+    sessions: Array<CreateEventSessionDto | UpdateEventSessionDto>,
+    ticketTypesCount: number,
+    startsAt: Date,
+    endsAt: Date,
+  ): void {
+    const eventStartDate = this.toDateOnly(startsAt);
+    const eventEndDate = this.toDateOnly(endsAt);
+    const uniqueSlots = new Set<string>();
+
+    for (const session of sessions) {
+      const date = this.toDateOnly(session.date);
+
+      if (date < eventStartDate || date > eventEndDate) {
+        throw new BadRequestException(
+          `La jornada del ${date} esta fuera del rango del evento`,
+        );
+      }
+
+      if (session.endTime && session.endTime <= session.startTime) {
+        throw new BadRequestException(
+          `La jornada del ${date} a las ${session.startTime} tiene hora de termino invalida`,
+        );
+      }
+
+      const slotKey = `${date}|${session.startTime}`;
+
+      if (uniqueSlots.has(slotKey)) {
+        throw new BadRequestException(
+          `Hay jornadas duplicadas el ${date} a las ${session.startTime}`,
+        );
+      }
+
+      uniqueSlots.add(slotKey);
+
+      const allocations = session.allocations ?? [];
+      const uniqueTypeIndexes = new Set<number>();
+      let allocationTotal = 0;
+
+      for (const allocation of allocations) {
+        if (allocation.ticketTypeIndex >= ticketTypesCount) {
+          throw new BadRequestException(
+            `La jornada del ${date} a las ${session.startTime} referencia un tipo de ticket inexistente`,
+          );
+        }
+
+        if (uniqueTypeIndexes.has(allocation.ticketTypeIndex)) {
+          throw new BadRequestException(
+            `La jornada del ${date} a las ${session.startTime} repite cupos para un mismo tipo de ticket`,
+          );
+        }
+
+        uniqueTypeIndexes.add(allocation.ticketTypeIndex);
+        allocationTotal += allocation.quantity;
+      }
+
+      if (allocationTotal > session.capacity) {
+        throw new BadRequestException(
+          `Los cupos por tipo de la jornada del ${date} a las ${session.startTime} superan su capacidad (${session.capacity})`,
+        );
+      }
+    }
+  }
+
+  private calculateSessionsTotalTickets(
+    sessions: Array<CreateEventSessionDto | UpdateEventSessionDto>,
+  ): number {
+    return sessions.reduce(
+      (accumulator, session) => accumulator + session.capacity,
+      0,
+    );
+  }
+
+  private buildSessionEntities(
+    entityManager: EntityManager,
+    eventId: string,
+    sessions: Array<CreateEventSessionDto | UpdateEventSessionDto>,
+    savedTicketTypes: EventTicketType[],
+  ): EventSession[] {
+    const sessionRepository = entityManager.getRepository(EventSession);
+    const allocationRepository = entityManager.getRepository(
+      EventSessionTicketAllocation,
+    );
+
+    return sessions.map((session) =>
+      sessionRepository.create({
+        eventId,
+        date: this.toDateOnly(session.date),
+        startTime: session.startTime,
+        endTime: session.endTime ?? null,
+        name: session.name ?? null,
+        capacity: session.capacity,
+        allocations: (session.allocations ?? []).map((allocation) =>
+          allocationRepository.create({
+            ticketTypeId: savedTicketTypes[allocation.ticketTypeIndex].id,
+            quantity: allocation.quantity,
+          }),
+        ),
+      }),
+    );
   }
 
   private validateTicketTypePromotion(
@@ -919,22 +1403,24 @@ export class EventsService {
     }
 
     const uniqueGroupKeys = new Set<string>();
-    const normalizedGroups = groupsRaw.map((rawGroup) => {
-      const normalizedGroup = this.normalizeMenuTemplateGroup(
-        rawGroup,
-        ticketTypeName,
-      );
-      const normalizedGroupKey = normalizedGroup.key.toLowerCase();
-
-      if (uniqueGroupKeys.has(normalizedGroupKey)) {
-        throw new BadRequestException(
-          `El ticket "${ticketTypeName}" repite grupos de menu con la misma clave`,
+    const normalizedGroups = groupsRaw.map(
+      (rawGroup: Parameters<typeof this.normalizeMenuTemplateGroup>[0]) => {
+        const normalizedGroup = this.normalizeMenuTemplateGroup(
+          rawGroup,
+          ticketTypeName,
         );
-      }
+        const normalizedGroupKey = normalizedGroup.key.toLowerCase();
 
-      uniqueGroupKeys.add(normalizedGroupKey);
-      return normalizedGroup;
-    });
+        if (uniqueGroupKeys.has(normalizedGroupKey)) {
+          throw new BadRequestException(
+            `El ticket "${ticketTypeName}" repite grupos de menu con la misma clave`,
+          );
+        }
+
+        uniqueGroupKeys.add(normalizedGroupKey);
+        return normalizedGroup;
+      },
+    );
 
     return {
       groups: normalizedGroups,
@@ -1122,19 +1608,21 @@ export class EventsService {
     }
 
     const uniqueGroupKeys = new Set<string>();
-    const normalizedGroups = groupsRaw.map((group) => {
-      const normalizedGroup = this.normalizeMenuSelectionGroup(group);
-      const normalizedGroupKey = normalizedGroup.groupKey.toLowerCase();
+    const normalizedGroups = groupsRaw.map(
+      (group: Parameters<typeof this.normalizeMenuSelectionGroup>[0]) => {
+        const normalizedGroup = this.normalizeMenuSelectionGroup(group);
+        const normalizedGroupKey = normalizedGroup.groupKey.toLowerCase();
 
-      if (uniqueGroupKeys.has(normalizedGroupKey)) {
-        throw new BadRequestException(
-          'La seleccion de menu contiene grupos duplicados',
-        );
-      }
+        if (uniqueGroupKeys.has(normalizedGroupKey)) {
+          throw new BadRequestException(
+            'La seleccion de menu contiene grupos duplicados',
+          );
+        }
 
-      uniqueGroupKeys.add(normalizedGroupKey);
-      return normalizedGroup;
-    });
+        uniqueGroupKeys.add(normalizedGroupKey);
+        return normalizedGroup;
+      },
+    );
 
     return {
       groups: normalizedGroups,
@@ -1523,6 +2011,256 @@ export class EventsService {
         );
       }
     }
+  }
+
+  private getSessionForEvent(event: Event, sessionId: string): EventSession {
+    const session = (event.sessions ?? []).find(
+      (item) => item.id === sessionId,
+    );
+
+    if (!session) {
+      throw new BadRequestException(
+        'La jornada seleccionada no pertenece al evento indicado',
+      );
+    }
+
+    return session;
+  }
+
+  private async countActiveTickets(
+    where: { sessionId?: string; ticketTypeId?: string },
+    excludeTicketId?: string,
+  ): Promise<number> {
+    const query = this.eventTicketRepository
+      .createQueryBuilder('ticket')
+      .where('ticket.status = :status', {
+        status: EventTicketStatus.ACTIVE,
+      });
+
+    if (where.sessionId) {
+      query.andWhere('ticket.sessionId = :sessionId', {
+        sessionId: where.sessionId,
+      });
+    }
+
+    if (where.ticketTypeId) {
+      query.andWhere('ticket.ticketTypeId = :ticketTypeId', {
+        ticketTypeId: where.ticketTypeId,
+      });
+    }
+
+    if (excludeTicketId) {
+      query.andWhere('ticket.id <> :excludeTicketId', { excludeTicketId });
+    }
+
+    return query.getCount();
+  }
+
+  private async ensureSessionAvailability(
+    session: EventSession,
+    ticketType: EventTicketType,
+    quantity = 1,
+    excludeTicketId?: string,
+  ): Promise<void> {
+    const soldForSession = await this.countActiveTickets(
+      { sessionId: session.id },
+      excludeTicketId,
+    );
+
+    if (soldForSession + quantity > session.capacity) {
+      throw new BadRequestException(
+        `No hay cupos disponibles para la jornada del ${session.date} a las ${session.startTime}`,
+      );
+    }
+
+    const allocation = (session.allocations ?? []).find(
+      (item) => item.ticketTypeId === ticketType.id,
+    );
+
+    if (allocation) {
+      const soldForType = await this.countActiveTickets(
+        { sessionId: session.id, ticketTypeId: ticketType.id },
+        excludeTicketId,
+      );
+
+      if (soldForType + quantity > allocation.quantity) {
+        throw new BadRequestException(
+          `No hay cupos disponibles para el tipo "${ticketType.name}" en esta jornada`,
+        );
+      }
+    }
+
+    if (ticketType.totalStock !== null) {
+      const soldTotal = await this.countActiveTickets(
+        { ticketTypeId: ticketType.id },
+        excludeTicketId,
+      );
+
+      if (soldTotal + quantity > ticketType.totalStock) {
+        throw new BadRequestException(
+          'No hay cupo total disponible para este tipo de ticket',
+        );
+      }
+    }
+  }
+
+  // ponytail: getRemainingForType/getRemainingForSession mirror the throw-logic in
+  // ensureAvailability/ensureSessionAvailability above (read-only, no exceptions).
+  // Keep the two pairs in sync; unify if they drift.
+  private async getRemainingForType(
+    ticketType: EventTicketType,
+    attendanceDate: string,
+  ): Promise<number | null> {
+    const layers: number[] = [];
+
+    const dailyStocks = ticketType.dailyStocks ?? [];
+    if (dailyStocks.length > 0) {
+      const dailyStock = dailyStocks.find(
+        (stock) => this.toDateOnly(stock.date) === attendanceDate,
+      );
+      if (!dailyStock) return 0; // sin cupo configurado para ese día
+      const soldForDay = await this.eventTicketRepository
+        .createQueryBuilder('ticket')
+        .where('ticket.ticketTypeId = :ticketTypeId', {
+          ticketTypeId: ticketType.id,
+        })
+        .andWhere('ticket.status = :status', {
+          status: EventTicketStatus.ACTIVE,
+        })
+        .andWhere('ticket.attendanceDate = :attendanceDate', { attendanceDate })
+        .getCount();
+      layers.push(Math.max(0, dailyStock.quantity - soldForDay));
+    }
+
+    if (ticketType.totalStock !== null) {
+      const soldTotal = await this.countActiveTickets({
+        ticketTypeId: ticketType.id,
+      });
+      layers.push(Math.max(0, ticketType.totalStock - soldTotal));
+    }
+
+    return layers.length ? Math.min(...layers) : null;
+  }
+
+  private async getRemainingForSession(
+    session: EventSession,
+    ticketType: EventTicketType,
+  ): Promise<number | null> {
+    const layers: number[] = [];
+
+    const soldForSession = await this.countActiveTickets({
+      sessionId: session.id,
+    });
+    layers.push(Math.max(0, session.capacity - soldForSession));
+
+    const allocation = (session.allocations ?? []).find(
+      (item) => item.ticketTypeId === ticketType.id,
+    );
+    if (allocation) {
+      const soldForType = await this.countActiveTickets({
+        sessionId: session.id,
+        ticketTypeId: ticketType.id,
+      });
+      layers.push(Math.max(0, allocation.quantity - soldForType));
+    }
+
+    if (ticketType.totalStock !== null) {
+      const soldTotal = await this.countActiveTickets({
+        ticketTypeId: ticketType.id,
+      });
+      layers.push(Math.max(0, ticketType.totalStock - soldTotal));
+    }
+
+    return layers.length ? Math.min(...layers) : null;
+  }
+
+  async getPublicDetail(id: string): Promise<PublicEventDetail> {
+    const event = await this.findOne(id);
+    if (event.status !== EventStatus.ENABLED) {
+      throw new NotFoundException('Evento no encontrado');
+    }
+
+    const ticketTypes: PublicEventDetailTicketType[] = [];
+    for (const t of event.ticketTypes ?? []) {
+      // fecha de referencia para stock diario: inicio del evento
+      const remaining = await this.getRemainingForType(
+        t,
+        this.toDateOnly(event.startsAt),
+      );
+      ticketTypes.push({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        price: t.price,
+        includesDetails: t.includesDetails,
+        menuMode: t.menuMode,
+        menuTemplate: t.menuTemplate,
+        remaining,
+        available: event.isFreeEntry || remaining === null || remaining > 0,
+      });
+    }
+
+    const sessions: PublicEventDetailSession[] = [];
+    for (const s of event.sessions ?? []) {
+      const perType: PublicEventDetailSessionTicketType[] = [];
+      for (const t of event.ticketTypes ?? []) {
+        const remaining = await this.getRemainingForSession(s, t);
+        perType.push({
+          ticketTypeId: t.id,
+          remaining,
+          available: event.isFreeEntry || remaining === null || remaining > 0,
+        });
+      }
+      // remaining a nivel jornada = mejor disponibilidad entre tipos.
+      // null solo si algún tipo es ilimitado; si no, el máximo de los remanentes.
+      let sessionRemaining: number | null = 0;
+      for (const pt of perType) {
+        if (pt.remaining === null) {
+          sessionRemaining = null;
+          break;
+        }
+        sessionRemaining = Math.max(sessionRemaining, pt.remaining);
+      }
+      const soldForSession = await this.countActiveTickets({ sessionId: s.id });
+      sessions.push({
+        id: s.id,
+        date: s.date,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        name: s.name ?? null,
+        remaining: sessionRemaining,
+        seatsRemaining: Math.max(0, s.capacity - soldForSession),
+        available:
+          event.isFreeEntry ||
+          sessionRemaining === null ||
+          sessionRemaining > 0,
+        ticketTypes: perType,
+      });
+    }
+
+    // evento sin jornadas: cupo total del evento (totalTickets=0 => ilimitado)
+    let seatsRemaining: number | null = null;
+    if (event.totalTickets > 0) {
+      const soldTotal = await this.eventTicketRepository.countBy({
+        eventId: event.id,
+        status: EventTicketStatus.ACTIVE,
+      });
+      seatsRemaining = Math.max(0, event.totalTickets - soldTotal);
+    }
+
+    return {
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      officialImageUrl: event.officialImageUrl,
+      isFreeEntry: event.isFreeEntry,
+      hasSessions: event.hasSessions,
+      seatsRemaining,
+      ticketTypes,
+      sessions,
+    };
   }
 
   private toDateOnly(date: Date | string): string {

@@ -21,6 +21,11 @@ export enum OrderStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum OrderPaymentMethod {
+  CASH = 'CASH',
+  CARD = 'CARD',
+}
+
 @Entity('orders')
 export class Order {
   @PrimaryGeneratedColumn('uuid')
@@ -48,6 +53,10 @@ export class Order {
   @JoinColumn({ name: 'reservationId' })
   reservation: Reservation | null;
 
+  // Cliente registrado al que se atribuyen puntos por compra (nullable: órdenes anónimas).
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
+
   @Column({
     type: 'enum',
     enum: OrderStatus,
@@ -69,6 +78,23 @@ export class Order {
     transformer: numericTransformer,
   })
   total: number;
+
+  // Propina cobrada al pagar (null en órdenes previas a esta funcionalidad).
+  @Column({
+    type: 'numeric',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: numericTransformer,
+  })
+  tipAmount: number | null;
+
+  @Column({
+    type: 'enum',
+    enum: OrderPaymentMethod,
+    nullable: true,
+  })
+  paymentMethod: OrderPaymentMethod | null;
 
   @OneToMany(() => OrderItem, (orderItem) => orderItem.order, {
     cascade: true,

@@ -55,4 +55,8 @@ export class CreateReservationDto {
   @IsString()
   @MaxLength(600)
   notes?: string;
+
+  @IsOptional()
+  @IsUUID()
+  comprobanteImageId?: string;
 }

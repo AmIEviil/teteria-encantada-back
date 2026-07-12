@@ -16,6 +16,7 @@ import { User } from './entities/user.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { JwtValidationMiddleware } from './middlewares/jwt-validation.middleware';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -33,6 +34,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   providers: [
     AuthService,
     JwtStrategy,
+    GoogleStrategy,
     JwtValidationMiddleware,
     {
       provide: APP_GUARD,

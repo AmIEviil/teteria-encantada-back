@@ -6,16 +6,12 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
 } from 'class-validator';
 
 export class CreateProductDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(40)
-  code: string;
-
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
@@ -26,9 +22,8 @@ export class CreateProductDto {
   description?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(8_000_000)
-  imageBase64?: string;
+  @IsUUID()
+  imageId?: string | null;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

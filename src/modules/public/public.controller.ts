@@ -1,8 +1,22 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
+import type {
+  PublicEventDetail,
+  PublicPurchaseResult,
+} from '../events/events.service';
 import { PublicCreateReservationDto } from './dto/public-create-reservation.dto';
 import { PublicFindReservationsDto } from './dto/public-find-reservations.dto';
+import { PublicPurchaseDto } from './dto/public-purchase.dto';
 import {
+  PublicEventItem,
   PublicMenuItem,
   PublicReservationItem,
   PublicReservationScheduleItem,
@@ -25,6 +39,11 @@ export class PublicController {
     return this.publicService.findTables();
   }
 
+  @Get('events')
+  findEvents(): Promise<PublicEventItem[]> {
+    return this.publicService.findEvents();
+  }
+
   @Get('reservations')
   findReservations(
     @Query() filters: PublicFindReservationsDto,
@@ -42,5 +61,20 @@ export class PublicController {
     @Body() createReservationDto: PublicCreateReservationDto,
   ): Promise<PublicReservationItem> {
     return this.publicService.createReservation(createReservationDto);
+  }
+
+  @Get('events/:id')
+  findEvent(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PublicEventDetail> {
+    return this.publicService.findEvent(id);
+  }
+
+  @Post('events/:id/tickets')
+  purchase(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PublicPurchaseDto,
+  ): Promise<PublicPurchaseResult> {
+    return this.publicService.purchase(id, dto);
   }
 }

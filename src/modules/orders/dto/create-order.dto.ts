@@ -43,6 +43,10 @@ export class CreateOrderDto {
   @IsUUID()
   reservationId?: string;
 
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)

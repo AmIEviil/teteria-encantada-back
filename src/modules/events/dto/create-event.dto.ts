@@ -11,6 +11,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   ValidateIf,
@@ -18,6 +19,55 @@ import {
 } from 'class-validator';
 import { EventStatus } from '../entities/event.entity';
 import { EventTicketMenuMode } from '../entities/event-ticket-type.entity';
+
+const SESSION_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export class CreateEventSessionAllocationDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  ticketTypeIndex!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+}
+
+export class CreateEventSessionDto {
+  @Type(() => Date)
+  @IsDate()
+  date!: Date;
+
+  @IsString()
+  @Matches(SESSION_TIME_PATTERN, {
+    message: 'La hora de inicio de la jornada debe tener formato HH:mm',
+  })
+  startTime!: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(SESSION_TIME_PATTERN, {
+    message: 'La hora de termino de la jornada debe tener formato HH:mm',
+  })
+  endTime?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  name?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  capacity!: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateEventSessionAllocationDto)
+  allocations?: CreateEventSessionAllocationDto[];
+}
 
 export class CreateEventTicketTypeDailyStockDto {
   @Type(() => Date)
@@ -186,10 +236,33 @@ export class CreateEventDto {
   @IsBoolean()
   isFreeEntry?: boolean;
 
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isWorkshop?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  workshopPoints?: number;
+
   @ValidateIf((dto: CreateEventDto) => !dto.isFreeEntry)
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateEventTicketTypeDto)
   ticketTypes?: CreateEventTicketTypeDto[];
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  hasSessions?: boolean;
+
+  @ValidateIf((dto: CreateEventDto) => Boolean(dto.hasSessions))
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateEventSessionDto)
+  sessions?: CreateEventSessionDto[];
 }

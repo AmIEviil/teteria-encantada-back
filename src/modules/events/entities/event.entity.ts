@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { EventTicket } from './event-ticket.entity';
 import { EventTicketType } from './event-ticket-type.entity';
+import { EventSession } from './event-session.entity';
 
 export enum EventStatus {
   ENABLED = 'ENABLED',
@@ -51,6 +52,19 @@ export class Event {
 
   @Column({ type: 'boolean', default: false })
   isFreeEntry!: boolean;
+
+  // Fidelización: marca el evento como taller y los puntos que otorga por asistencia.
+  @Column({ type: 'boolean', default: false })
+  isWorkshop!: boolean;
+
+  @Column({ type: 'int', default: 0 })
+  workshopPoints!: number;
+
+  @Column({ type: 'boolean', default: false })
+  hasSessions!: boolean;
+
+  @OneToMany(() => EventSession, (session) => session.event)
+  sessions!: EventSession[];
 
   @OneToMany(() => EventTicketType, (ticketType) => ticketType.event)
   ticketTypes!: EventTicketType[];
