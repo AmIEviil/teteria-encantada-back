@@ -731,6 +731,41 @@ export class EventsService {
     return savedTickets;
   }
 
+  /**
+   * Total autoritativo del servidor para una compra publica, calculado desde
+   * la BD (nunca desde el cliente). Debe coincidir, item por item, con el
+   * precio que createTicket/createPublicTickets efectivamente persiste para
+   * el mismo input: basePrice = ticketType.price (createPublicTickets nunca
+   * envia `price` propio), buildTicketUnitPrices con quantity=1 y
+   * applyPromotion=false (createPublicTickets siempre llama createTicket con
+   * quantity:1 y sin applyPromotion), mas el extra de menu resuelto por
+   * resolveMenuSelectionForTicket.
+   */
+  async quotePublicPurchase(
+    eventId: string,
+    items: PublicPurchaseItemInput[],
+  ): Promise<number> {
+    const event = await this.findOne(eventId);
+    let total = 0;
+
+    for (const item of items) {
+      const ticketType = this.getTicketTypeForEvent(event, item.ticketTypeId);
+      const [unitPrice] = this.buildTicketUnitPrices(
+        ticketType.price,
+        ticketType,
+        1,
+        false,
+      );
+      const menu = this.resolveMenuSelectionForTicket(
+        ticketType,
+        item.menuSelection,
+      );
+      total += unitPrice + menu.snapshot.totalExtraPrice;
+    }
+
+    return total;
+  }
+
   async createPublicTickets(
     eventId: string,
     input: PublicPurchaseInput,

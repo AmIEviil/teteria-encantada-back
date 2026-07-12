@@ -1104,6 +1104,111 @@ describe('EventsService', () => {
     });
   });
 
+  describe('quotePublicPurchase', () => {
+    it('quotePublicPurchase suma precio base + extra de menú por item', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        id: 'e1',
+        status: 'ENABLED',
+        hasSessions: false,
+        ticketTypes: [
+          { id: 'tt1', name: 'Gen', price: 5000, menuMode: 'FIXED', menuTemplate: null },
+        ],
+        sessions: [],
+      } as any);
+
+      const total = await service.quotePublicPurchase('e1', [
+        {
+          ticketTypeId: 'tt1',
+          attendeeFirstName: 'A',
+          attendeeLastName: 'B',
+          attendanceDate: new Date('2026-08-01'),
+        },
+        {
+          ticketTypeId: 'tt1',
+          attendeeFirstName: 'C',
+          attendeeLastName: 'D',
+          attendanceDate: new Date('2026-08-01'),
+        },
+      ]);
+      expect(total).toBe(10000);
+    });
+
+    it('incluye el extra de menu personalizado en el total', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [buildTicketType({ id: 'tt-1', price: 100, ...customizableTemplate() })],
+        }),
+      );
+
+      const total = await service.quotePublicPurchase('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection: {
+            groups: [{ groupKey: 'plato', optionIds: ['pollo'] }],
+          } as never,
+        },
+      ]);
+
+      // base 100 + extra de "pollo" (10) = 110
+      expect(total).toBe(110);
+    });
+
+    it('suma multiples items de distintos tipos de ticket', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [
+            buildTicketType({ id: 'tt-1', price: 100 }),
+            buildTicketType({ id: 'tt-2', price: 250 }),
+          ],
+        }),
+      );
+
+      const total = await service.quotePublicPurchase('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+        {
+          ticketTypeId: 'tt-2',
+          attendeeFirstName: 'Luis',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+        {
+          ticketTypeId: 'tt-2',
+          attendeeFirstName: 'Eva',
+          attendeeLastName: 'Ruiz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+      ]);
+
+      // 100 + 250 + 250 = 600
+      expect(total).toBe(600);
+    });
+
+    it('rechaza un ticketTypeId que no pertenece al evento en vez de cobrar 0', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType({ id: 'tt-1', price: 100 })] }),
+      );
+
+      await expect(
+        service.quotePublicPurchase('ev-1', [
+          {
+            ticketTypeId: 'no-existe',
+            attendeeFirstName: 'Ana',
+            attendeeLastName: 'Paz',
+            attendanceDate: new Date('2026-07-02'),
+          },
+        ]),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
   describe('findTickets', () => {
     it('lista con filtros', async () => {
       eventRepo.findOne.mockResolvedValue(buildEvent());
