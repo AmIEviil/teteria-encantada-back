@@ -531,6 +531,7 @@ export class EventsService {
   async createTicket(
     eventId: string,
     createEventTicketDto: CreateEventTicketDto,
+    opts?: { buyerEmail?: string | null },
   ): Promise<EventTicket[]> {
     const event = await this.findOne(eventId);
     const quantity = createEventTicketDto.quantity ?? 1;
@@ -608,6 +609,7 @@ export class EventsService {
         userId: createEventTicketDto.userId ?? null,
         attendeeFirstName: createEventTicketDto.attendeeFirstName.trim(),
         attendeeLastName: createEventTicketDto.attendeeLastName.trim(),
+        buyerEmail: opts?.buyerEmail ?? null,
         attendanceDate,
         sessionId: session?.id ?? null,
         price: unitPrice + menuSelectionResult.snapshot.totalExtraPrice,

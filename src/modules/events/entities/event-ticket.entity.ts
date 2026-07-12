@@ -51,6 +51,9 @@ export class EventTicket {
   @Column({ type: 'varchar', length: 120 })
   attendeeLastName!: string;
 
+  @Column({ type: 'varchar', length: 180, nullable: true })
+  buyerEmail!: string | null;
+
   @Column({ type: 'date' })
   attendanceDate!: string;
 
