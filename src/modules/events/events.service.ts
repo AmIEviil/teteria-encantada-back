@@ -129,6 +129,41 @@ export interface PublicEventDetail {
   sessions: PublicEventDetailSession[];
 }
 
+export interface PublicPurchaseItemInput {
+  ticketTypeId: string;
+  sessionId?: string;
+  attendanceDate?: Date;
+  attendeeFirstName: string;
+  attendeeLastName: string;
+  menuSelection?: CreateEventTicketDto['menuSelection'];
+}
+
+export interface PublicPurchaseInput {
+  buyerEmail: string;
+  items: PublicPurchaseItemInput[];
+}
+
+export interface PublicPurchaseTicket {
+  id: string;
+  ticketTypeName: string;
+  attendeeFirstName: string;
+  attendeeLastName: string;
+  attendanceDate: string;
+  sessionId: string | null;
+  price: number;
+  menuExtraPrice: number;
+  includesDetails: string | null;
+  menuSummary: string | null;
+}
+
+export interface PublicPurchaseResult {
+  eventId: string;
+  eventTitle: string;
+  buyerEmail: string;
+  tickets: PublicPurchaseTicket[];
+  total: number;
+}
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -682,6 +717,75 @@ export class EventsService {
     }
 
     return savedTickets;
+  }
+
+  async createPublicTickets(
+    eventId: string,
+    input: PublicPurchaseInput,
+  ): Promise<PublicPurchaseResult> {
+    const created: EventTicket[] = [];
+    try {
+      for (const item of input.items) {
+        const [ticket] = await this.createTicket(
+          eventId,
+          {
+            ticketTypeId: item.ticketTypeId,
+            attendeeFirstName: item.attendeeFirstName,
+            attendeeLastName: item.attendeeLastName,
+            sessionId: item.sessionId,
+            attendanceDate: item.attendanceDate,
+            menuSelection: item.menuSelection,
+            quantity: 1,
+          } as CreateEventTicketDto,
+          { buyerEmail: input.buyerEmail },
+        );
+        created.push(ticket);
+      }
+    } catch (error) {
+      // ponytail: borrado compensatorio, no es una transacción real. Subir a
+      // queryRunner tx si las colisiones concurrentes importan.
+      if (created.length) {
+        await this.eventTicketRepository.delete(created.map((t) => t.id));
+        await this.syncEventSoldTickets(eventId);
+      }
+      throw error;
+    }
+
+    const event = await this.findOne(eventId);
+    return this.toPublicPurchaseResult(event, created, input.buyerEmail);
+  }
+
+  private toPublicPurchaseResult(
+    event: Event,
+    tickets: EventTicket[],
+    buyerEmail: string,
+  ): PublicPurchaseResult {
+    const mapped = tickets.map((ticket) => ({
+      id: ticket.id,
+      ticketTypeName: ticket.ticketType?.name ?? '',
+      attendeeFirstName: ticket.attendeeFirstName,
+      attendeeLastName: ticket.attendeeLastName,
+      attendanceDate: this.toDateOnly(ticket.attendanceDate),
+      sessionId: ticket.sessionId ?? null,
+      price: ticket.price,
+      menuExtraPrice: ticket.menuExtraPrice,
+      includesDetails: ticket.includesDetails,
+      menuSummary: ticket.menuSelectionSnapshot
+        ? this.buildMenuSelectionSummary(
+            // ponytail: el snapshot persistido es Record<string, unknown>; el
+            // shape real lo produce resolveMenuSelectionForTicket.
+            ticket.menuSelectionSnapshot as any,
+          )
+        : null,
+    }));
+
+    return {
+      eventId: event.id,
+      eventTitle: event.title,
+      buyerEmail,
+      tickets: mapped,
+      total: mapped.reduce((sum, t) => sum + t.price, 0),
+    };
   }
 
   async findTickets(
