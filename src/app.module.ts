@@ -18,6 +18,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     WhatsappModule,
     RealtimeModule,
     LoyaltyModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [
