@@ -64,6 +64,9 @@ export class EventTicket {
   @JoinColumn({ name: 'sessionId' })
   session!: EventSession | null;
 
+  @Column({ type: 'uuid', nullable: true })
+  purchaseId!: string | null;
+
   @Column({
     type: 'numeric',
     precision: 10,
