@@ -113,6 +113,7 @@ export interface PublicEventDetailSession {
   name: string | null;
   available: boolean;
   remaining: number | null;
+  seatsRemaining: number; // cupo real compartido de la jornada (capacity - vendidos)
   ticketTypes: PublicEventDetailSessionTicketType[];
 }
 
@@ -125,6 +126,7 @@ export interface PublicEventDetail {
   officialImageUrl: string | null;
   isFreeEntry: boolean;
   hasSessions: boolean;
+  seatsRemaining: number | null; // cupo total del evento sin jornadas; null = ilimitado
   ticketTypes: PublicEventDetailTicketType[];
   sessions: PublicEventDetailSession[];
 }
@@ -2203,6 +2205,7 @@ export class EventsService {
         }
         sessionRemaining = Math.max(sessionRemaining, pt.remaining);
       }
+      const soldForSession = await this.countActiveTickets({ sessionId: s.id });
       sessions.push({
         id: s.id,
         date: s.date,
@@ -2210,10 +2213,21 @@ export class EventsService {
         endTime: s.endTime,
         name: s.name ?? null,
         remaining: sessionRemaining,
+        seatsRemaining: Math.max(0, s.capacity - soldForSession),
         available:
           event.isFreeEntry || sessionRemaining === null || sessionRemaining > 0,
         ticketTypes: perType,
       });
+    }
+
+    // evento sin jornadas: cupo total del evento (totalTickets=0 => ilimitado)
+    let seatsRemaining: number | null = null;
+    if (event.totalTickets > 0) {
+      const soldTotal = await this.eventTicketRepository.countBy({
+        eventId: event.id,
+        status: EventTicketStatus.ACTIVE,
+      });
+      seatsRemaining = Math.max(0, event.totalTickets - soldTotal);
     }
 
     return {
@@ -2225,6 +2239,7 @@ export class EventsService {
       officialImageUrl: event.officialImageUrl,
       isFreeEntry: event.isFreeEntry,
       hasSessions: event.hasSessions,
+      seatsRemaining,
       ticketTypes,
       sessions,
     };

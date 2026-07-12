@@ -115,6 +115,7 @@ describe('getPublicDetail', () => {
       startTime: '10:00',
       endTime: null,
       name: null,
+      capacity: 20,
       allocations: [],
     };
     const event: any = {
@@ -134,6 +135,8 @@ describe('getPublicDetail', () => {
     };
 
     svc.findOne = jest.fn().mockResolvedValue(event);
+    svc.countActiveTickets = jest.fn().mockResolvedValue(3); // vendidos por jornada
+    svc.eventTicketRepository = { countBy: jest.fn().mockResolvedValue(4) }; // vendidos del evento
     svc.getRemainingForType = jest
       .fn()
       .mockImplementation(async (t: any) => (t.id === 'tt-sold-out' ? 0 : 5));
@@ -151,6 +154,10 @@ describe('getPublicDetail', () => {
     // Fix under test: remaining and available must agree with each other.
     expect(sessionResult.remaining).toBeGreaterThan(0);
     expect(sessionResult.available).toBe(true);
+
+    // cupo agregado: jornada = capacity - vendidos; evento = totalTickets - vendidos.
+    expect(sessionResult.seatsRemaining).toBe(17); // 20 - 3
+    expect(result.seatsRemaining).toBe(6); // 10 - 4
 
     for (const tt of [...result.ticketTypes, ...sessionResult.ticketTypes]) {
       expect(tt).not.toHaveProperty('isPromotional');
