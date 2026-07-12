@@ -2,6 +2,11 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
 import { Event, EventStatus } from '../events/entities/event.entity';
+import { EventsService } from '../events/events.service';
+import type {
+  PublicEventDetail,
+  PublicPurchaseResult,
+} from '../events/events.service';
 import {
   RestaurantTable,
   TableStatus,
@@ -12,6 +17,7 @@ import { Reservation } from '../reservations/entities/reservation.entity';
 import { ReservationsService } from '../reservations/reservations.service';
 import { PublicCreateReservationDto } from './dto/public-create-reservation.dto';
 import { PublicFindReservationsDto } from './dto/public-find-reservations.dto';
+import { PublicPurchaseDto } from './dto/public-purchase.dto';
 
 export interface PublicMenuItem {
   id: string;
@@ -78,6 +84,7 @@ export class PublicService {
     @InjectRepository(Event)
     private readonly eventRepository: Repository<Event>,
     private readonly reservationsService: ReservationsService,
+    private readonly eventsService: EventsService,
   ) {}
 
   async findEvents(): Promise<PublicEventItem[]> {
@@ -145,6 +152,24 @@ export class PublicService {
     const reservation =
       await this.reservationsService.create(createReservationDto);
     return this.toPublicReservation(reservation);
+  }
+
+  findEvent(id: string): Promise<PublicEventDetail> {
+    return this.eventsService.getPublicDetail(id);
+  }
+
+  purchase(id: string, dto: PublicPurchaseDto): Promise<PublicPurchaseResult> {
+    return this.eventsService.createPublicTickets(id, {
+      buyerEmail: dto.buyerEmail,
+      items: dto.items.map((item) => ({
+        ticketTypeId: item.ticketTypeId,
+        sessionId: item.sessionId,
+        attendanceDate: item.attendanceDate,
+        attendeeFirstName: item.attendeeFirstName,
+        attendeeLastName: item.attendeeLastName,
+        menuSelection: item.menuSelection,
+      })),
+    });
   }
 
   private toPublicReservation(reservation: Reservation): PublicReservationItem {

@@ -24,5 +24,6 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
   ],
   controllers: [EventsController],
   providers: [EventsService],
+  exports: [EventsService],
 })
 export class EventsModule {}
