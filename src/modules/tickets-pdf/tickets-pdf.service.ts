@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
 import { S3StorageService } from '../images/storage/s3-storage.service';
 
 export interface PdfTicketInput {
@@ -42,7 +42,7 @@ export class TicketsPdfService {
 
       let y = PAGE_H - MARGIN - 28;
       for (const l of lines) {
-        page.drawText(l.text, {
+        page.drawText(this.sanitizeForFont(l.text, l.f), {
           x: MARGIN, y, size: l.size, font: l.f, color: rgb(0.1, 0.1, 0.1),
         });
         y -= l.size + 14;
@@ -51,6 +51,26 @@ export class TicketsPdfService {
 
     const bytes = await doc.save();
     return Buffer.from(bytes);
+  }
+
+  // Helvetica sólo soporta WinAnsiEncoding (CP-1252): tildes, ñ, ¡, ¿ y — son válidos,
+  // pero un emoji u otro carácter fuera de ese set hace que pdf-lib arroje una excepción
+  // SÍNCRONA al dibujar texto, abortando TODO el PDF (incluso para tickets ya pagados).
+  // Sanitizamos el texto antes de dibujarlo, en vez de solo atrapar el error, para que
+  // el ticket siga mostrando texto legible en lugar de una página en blanco.
+  private sanitizeForFont(text: string, font: PDFFont): string {
+    return Array.from(text)
+      .filter((ch) => this.isEncodable(ch, font))
+      .join('');
+  }
+
+  private isEncodable(ch: string, font: PDFFont): boolean {
+    try {
+      font.encodeText(ch);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async drawBackground(
