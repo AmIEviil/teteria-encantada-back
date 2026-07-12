@@ -51,6 +51,11 @@ export class UpdateEventSessionDto {
   })
   endTime?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  name?: string;
+
   @Type(() => Number)
   @IsInt()
   @Min(1)

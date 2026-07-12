@@ -34,6 +34,9 @@ export class EventSession {
   @Column({ type: 'varchar', length: 5, nullable: true })
   endTime!: string | null;
 
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  name!: string | null;
+
   @Column({ type: 'int' })
   capacity!: number;
 

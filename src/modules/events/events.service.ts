@@ -1070,6 +1070,7 @@ export class EventsService {
         date: this.toDateOnly(session.date),
         startTime: session.startTime,
         endTime: session.endTime ?? null,
+        name: session.name ?? null,
         capacity: session.capacity,
         allocations: (session.allocations ?? []).map((allocation) =>
           allocationRepository.create({
