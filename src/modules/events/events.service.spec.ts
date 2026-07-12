@@ -599,7 +599,7 @@ describe('EventsService', () => {
         title: ' Nuevo ',
         description: 'd',
         officialImageUrl: 'http://img',
-        status: EventStatus.DISABLED,
+        status: EventStatus.SUSPENDED,
       } as never);
       expect(result).toBeDefined();
       expect(txEvent.save).toHaveBeenCalled();
@@ -714,7 +714,7 @@ describe('EventsService', () => {
     it('actualiza estado', async () => {
       eventRepo.findOne.mockResolvedValue(buildEvent());
       const result = await service.updateStatus('ev-1', {
-        status: EventStatus.DISABLED,
+        status: EventStatus.SUSPENDED,
       } as never);
       expect(eventRepo.save).toHaveBeenCalled();
       expect(result).toBeDefined();
@@ -749,7 +749,7 @@ describe('EventsService', () => {
 
     it('rechaza evento no habilitado', async () => {
       eventRepo.findOne.mockResolvedValue(
-        buildEvent({ status: EventStatus.DISABLED }),
+        buildEvent({ status: EventStatus.SUSPENDED }),
       );
       await expect(
         service.createTicket('ev-1', dto() as never),

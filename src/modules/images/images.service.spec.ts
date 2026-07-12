@@ -32,8 +32,8 @@ describe('ImagesService', () => {
     storage.publicUrl.mockReturnValue('https://cdn/x.png');
     repo.create.mockImplementation((data: Partial<Image>) => data);
     repo.save.mockImplementation(async (data: Image) => ({
-      id: 'img-1',
       ...data,
+      id: 'img-1',
     }));
 
     const service = buildService();

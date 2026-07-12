@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { LoyaltyService } from './loyalty.service';
 import { LoyaltyConfig } from './entities/loyalty-config.entity';
 import { LoyaltyLevel } from './entities/loyalty-level.entity';
@@ -88,7 +88,7 @@ describe('LoyaltyService', () => {
   it('earnPurchase suma puntos y sube de nivel', async () => {
     await service.earnPurchase('u1', 'o1', 150);
     const acc = await accounts.findOne({
-      where: { userId: 'u1' } as Partial<LoyaltyAccount>,
+      where: { userId: 'u1' } as FindOptionsWhere<LoyaltyAccount>,
     });
     expect(acc?.points).toBe(150);
     expect(acc?.currentLevelId).toBe('lvl1');
@@ -100,7 +100,7 @@ describe('LoyaltyService', () => {
     configRepo.rows[0].purchasePointsEnabled = false;
     await service.earnPurchase('u1', 'o1', 150);
     const acc = await accounts.findOne({
-      where: { userId: 'u1' } as Partial<LoyaltyAccount>,
+      where: { userId: 'u1' } as FindOptionsWhere<LoyaltyAccount>,
     });
     expect(acc).toBeNull();
   });
