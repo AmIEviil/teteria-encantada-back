@@ -10,6 +10,9 @@ export interface MpChargeInput {
   payerEmail: string;
   description: string;
   externalReference: string;
+  // MP no dedupea reintentos por external_reference: sin idempotency key un
+  // reintento (p.ej. por timeout de red) puede cobrar dos veces.
+  idempotencyKey?: string;
 }
 
 export interface MpChargeResult {
@@ -41,6 +44,9 @@ export class MercadoPagoService {
         payer: { email: input.payerEmail },
         external_reference: input.externalReference,
       },
+      requestOptions: input.idempotencyKey
+        ? { idempotencyKey: input.idempotencyKey }
+        : undefined,
     });
     return {
       id: String(res.id),
