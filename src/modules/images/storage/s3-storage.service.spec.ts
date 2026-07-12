@@ -84,6 +84,20 @@ describe('S3StorageService', () => {
       expect(cmd.input.Key).toBe(key);
     });
 
+    it('hace round-trip con caracteres que se percent-encodean (espacio y acento)', async () => {
+      async function* gen() {
+        yield Buffer.from('ENCODEDBYTES');
+      }
+      send.mockResolvedValue({ Body: gen() });
+      const service = buildService();
+      const key = 'tickets/templates/plantilla ñ 1.png';
+      const url = service.publicUrl(key);
+      const buf = await service.getObjectByUrl(url);
+      expect(buf.toString()).toBe('ENCODEDBYTES');
+      const cmd = send.mock.calls[0][0];
+      expect(cmd.input.Key).toBe(key);
+    });
+
     it('deriva el key correctamente cuando AWS_S3_PUBLIC_URL_BASE está seteado', async () => {
       process.env.AWS_S3_PUBLIC_URL_BASE = 'https://cdn.example.com/assets/';
       async function* gen() {

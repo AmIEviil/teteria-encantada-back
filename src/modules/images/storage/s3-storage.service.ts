@@ -65,6 +65,6 @@ export class S3StorageService {
       return url.slice(base.length + 1);
     }
     // https://<bucket>.s3.<region>.amazonaws.com/<key>
-    return new URL(url).pathname.replace(/^\/+/, '');
+    return decodeURIComponent(new URL(url).pathname).replace(/^\/+/, '');
   }
 }
