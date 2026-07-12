@@ -746,6 +746,15 @@ export class EventsService {
     items: PublicPurchaseItemInput[],
   ): Promise<number> {
     const event = await this.findOne(eventId);
+    this.assertEventEnabled(event.status);
+    this.assertEventAllowsTickets(event);
+
+    if (items.length === 0) {
+      throw new BadRequestException(
+        'Debes incluir al menos un ticket en la compra',
+      );
+    }
+
     let total = 0;
 
     for (const item of items) {
@@ -763,7 +772,7 @@ export class EventsService {
       total += unitPrice + menu.snapshot.totalExtraPrice;
     }
 
-    return total;
+    return Math.round(total * 100) / 100;
   }
 
   async createPublicTickets(

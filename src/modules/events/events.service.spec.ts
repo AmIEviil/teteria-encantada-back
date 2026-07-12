@@ -1207,6 +1207,138 @@ describe('EventsService', () => {
         ]),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
+
+    it('cotiza tickets promocionales a precio de lista (quantity:1, applyPromotion:false)', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [
+            buildTicketType({
+              id: 'tt-1',
+              price: 100,
+              isPromotional: true,
+              promoMinQuantity: 2,
+              promoBundlePrice: 150,
+            }),
+          ],
+        }),
+      );
+
+      const total = await service.quotePublicPurchase('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Luis',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+      ]);
+
+      // Precio de lista (100 x 2 = 200), no el precio promocional en bloque
+      // (150). La cotizacion nunca debe aplicar la promocion.
+      expect(total).toBe(200);
+    });
+
+    it('el total cotizado coincide con la suma de los tickets efectivamente creados', async () => {
+      const items = [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Luis',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+      ];
+
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType({ id: 'tt-1', price: 100 })] }),
+      );
+
+      const total = await service.quotePublicPurchase('ev-1', items as never);
+
+      const result = await service.createPublicTickets('ev-1', {
+        buyerEmail: 'cliente@example.com',
+        items: items as never,
+      });
+
+      const sumOfTickets = result.tickets.reduce((sum, t) => sum + t.price, 0);
+      expect(total).toBe(sumOfTickets);
+    });
+
+    it('redondea el total a 2 decimales ante acumulacion de floats', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [
+            buildTicketType({
+              id: 'tt-1',
+              price: 10.1,
+              menuMode: EventTicketMenuMode.CUSTOMIZABLE,
+              menuTemplate: {
+                groups: [
+                  {
+                    key: 'extra',
+                    label: 'Extra',
+                    required: false,
+                    minSelect: 0,
+                    maxSelect: 1,
+                    options: [{ id: 'opt', label: 'Opcion', extraPrice: 0.2 }],
+                  },
+                ],
+              } as never,
+            }),
+          ],
+        }),
+      );
+
+      const menuSelection = {
+        groups: [{ groupKey: 'extra', optionIds: ['opt'] }],
+      } as never;
+
+      const total = await service.quotePublicPurchase('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'A',
+          attendeeLastName: 'B',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection,
+        },
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'C',
+          attendeeLastName: 'D',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection,
+        },
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'E',
+          attendeeLastName: 'F',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection,
+        },
+      ]);
+
+      expect(total).toBe(30.9);
+    });
+
+    it('rechaza una compra sin items', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+
+      await expect(
+        service.quotePublicPurchase('ev-1', []),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 
   describe('findTickets', () => {
