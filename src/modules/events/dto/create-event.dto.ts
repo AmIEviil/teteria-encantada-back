@@ -166,6 +166,11 @@ export class CreateEventTicketTypeDto {
   includesDetails?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(600)
+  customTicketTemplateUrl?: string;
+
+  @IsOptional()
   @IsEnum(EventTicketMenuMode)
   menuMode?: EventTicketMenuMode;
 

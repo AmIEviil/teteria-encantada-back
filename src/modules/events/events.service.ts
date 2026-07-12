@@ -274,6 +274,9 @@ export class EventsService {
                 includesDetails: this.normalizeTextToNullable(
                   ticketType.includesDetails,
                 ),
+                customTicketTemplateUrl: this.normalizeTextToNullable(
+                  ticketType.customTicketTemplateUrl,
+                ),
                 menuMode: menuConfig.menuMode,
                 menuTemplate: menuConfig.menuTemplate as Record<
                   string,
@@ -547,6 +550,9 @@ export class EventsService {
               price: ticketType.price,
               includesDetails: this.normalizeTextToNullable(
                 ticketType.includesDetails,
+              ),
+              customTicketTemplateUrl: this.normalizeTextToNullable(
+                ticketType.customTicketTemplateUrl,
               ),
               menuMode: menuConfig.menuMode,
               menuTemplate: menuConfig.menuTemplate as Record<

@@ -282,6 +282,27 @@ describe('EventsService', () => {
       expect(txTicketType.save).toHaveBeenCalled();
     });
 
+    it('persiste customTicketTemplateUrl del ticket type', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent());
+      await service.create({
+        title: 'Evento',
+        startsAt: START,
+        endsAt: END,
+        ticketTypes: [
+          makeTicketTypeDto({
+            name: 'VIP',
+            customTicketTemplateUrl: 'https://s3/tpl.png',
+          }),
+        ],
+      } as never);
+
+      expect(txTicketType.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customTicketTemplateUrl: 'https://s3/tpl.png',
+        }),
+      );
+    });
+
     it.each([
       ['nombres duplicados', [makeTicketTypeDto(), makeTicketTypeDto()]],
       [
