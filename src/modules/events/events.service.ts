@@ -87,6 +87,48 @@ interface MenuSelectionResult {
   };
 }
 
+export interface PublicEventDetailTicketType {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  includesDetails: string | null;
+  menuMode: EventTicketType['menuMode'];
+  menuTemplate: EventTicketType['menuTemplate'];
+  available: boolean;
+  remaining: number | null;
+}
+
+export interface PublicEventDetailSessionTicketType {
+  ticketTypeId: string;
+  available: boolean;
+  remaining: number | null;
+}
+
+export interface PublicEventDetailSession {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string | null;
+  name: string | null;
+  available: boolean;
+  remaining: number | null;
+  ticketTypes: PublicEventDetailSessionTicketType[];
+}
+
+export interface PublicEventDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  officialImageUrl: string | null;
+  isFreeEntry: boolean;
+  hasSessions: boolean;
+  ticketTypes: PublicEventDetailTicketType[];
+  sessions: PublicEventDetailSession[];
+}
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -1941,6 +1983,135 @@ export class EventsService {
         );
       }
     }
+  }
+
+  // ponytail: getRemainingForType/getRemainingForSession mirror the throw-logic in
+  // ensureAvailability/ensureSessionAvailability above (read-only, no exceptions).
+  // Keep the two pairs in sync; unify if they drift.
+  private async getRemainingForType(
+    ticketType: EventTicketType,
+    attendanceDate: string,
+  ): Promise<number | null> {
+    const layers: number[] = [];
+
+    const dailyStocks = ticketType.dailyStocks ?? [];
+    if (dailyStocks.length > 0) {
+      const dailyStock = dailyStocks.find(
+        (stock) => this.toDateOnly(stock.date) === attendanceDate,
+      );
+      if (!dailyStock) return 0; // sin cupo configurado para ese día
+      const soldForDay = await this.eventTicketRepository
+        .createQueryBuilder('ticket')
+        .where('ticket.ticketTypeId = :ticketTypeId', { ticketTypeId: ticketType.id })
+        .andWhere('ticket.status = :status', { status: EventTicketStatus.ACTIVE })
+        .andWhere('ticket.attendanceDate = :attendanceDate', { attendanceDate })
+        .getCount();
+      layers.push(Math.max(0, dailyStock.quantity - soldForDay));
+    }
+
+    if (ticketType.totalStock !== null) {
+      const soldTotal = await this.countActiveTickets({ ticketTypeId: ticketType.id });
+      layers.push(Math.max(0, ticketType.totalStock - soldTotal));
+    }
+
+    return layers.length ? Math.min(...layers) : null;
+  }
+
+  private async getRemainingForSession(
+    session: EventSession,
+    ticketType: EventTicketType,
+  ): Promise<number | null> {
+    const layers: number[] = [];
+
+    const soldForSession = await this.countActiveTickets({ sessionId: session.id });
+    layers.push(Math.max(0, session.capacity - soldForSession));
+
+    const allocation = (session.allocations ?? []).find(
+      (item) => item.ticketTypeId === ticketType.id,
+    );
+    if (allocation) {
+      const soldForType = await this.countActiveTickets({
+        sessionId: session.id,
+        ticketTypeId: ticketType.id,
+      });
+      layers.push(Math.max(0, allocation.quantity - soldForType));
+    }
+
+    if (ticketType.totalStock !== null) {
+      const soldTotal = await this.countActiveTickets({ ticketTypeId: ticketType.id });
+      layers.push(Math.max(0, ticketType.totalStock - soldTotal));
+    }
+
+    return layers.length ? Math.min(...layers) : null;
+  }
+
+  async getPublicDetail(id: string): Promise<PublicEventDetail> {
+    const event = await this.findOne(id);
+    if (event.status !== EventStatus.ENABLED) {
+      throw new NotFoundException('Evento no encontrado');
+    }
+
+    const ticketTypes: PublicEventDetailTicketType[] = [];
+    for (const t of event.ticketTypes ?? []) {
+      // fecha de referencia para stock diario: inicio del evento
+      const remaining = await this.getRemainingForType(
+        t,
+        this.toDateOnly(event.startsAt),
+      );
+      ticketTypes.push({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        price: t.price,
+        includesDetails: t.includesDetails,
+        menuMode: t.menuMode,
+        menuTemplate: t.menuTemplate,
+        remaining,
+        available: event.isFreeEntry || remaining === null || remaining > 0,
+      });
+    }
+
+    const sessions: PublicEventDetailSession[] = [];
+    for (const s of event.sessions ?? []) {
+      const perType: PublicEventDetailSessionTicketType[] = [];
+      for (const t of event.ticketTypes ?? []) {
+        const remaining = await this.getRemainingForSession(s, t);
+        perType.push({
+          ticketTypeId: t.id,
+          remaining,
+          available: event.isFreeEntry || remaining === null || remaining > 0,
+        });
+      }
+      const sessionRemaining = perType.reduce<number | null>((acc, pt) => {
+        if (pt.remaining === null) return acc;
+        return acc === null ? pt.remaining : Math.min(acc, pt.remaining);
+      }, null);
+      sessions.push({
+        id: s.id,
+        date: s.date,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        name: s.name ?? null,
+        remaining: sessionRemaining,
+        available:
+          event.isFreeEntry ||
+          perType.some((pt) => pt.available),
+        ticketTypes: perType,
+      });
+    }
+
+    return {
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      startsAt: event.startsAt,
+      endsAt: event.endsAt,
+      officialImageUrl: event.officialImageUrl,
+      isFreeEntry: event.isFreeEntry,
+      hasSessions: event.hasSessions,
+      ticketTypes,
+      sessions,
+    };
   }
 
   private toDateOnly(date: Date | string): string {
