@@ -8,6 +8,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const requestBodyLimit = process.env.REQUEST_BODY_LIMIT ?? '10mb';
 
+  app.setGlobalPrefix('api');
   app.use(json({ limit: requestBodyLimit }));
   app.use(urlencoded({ extended: true, limit: requestBodyLimit }));
 
