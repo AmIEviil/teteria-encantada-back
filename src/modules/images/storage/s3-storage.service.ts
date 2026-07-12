@@ -37,8 +37,18 @@ export class S3StorageService {
     );
   }
 
+  // Base publica sin barras finales. Sin regex: `/\/+$/` dispara aviso de
+  // backtracking super-lineal en el linter.
+  private get publicUrlBase(): string | undefined {
+    const raw = process.env.AWS_S3_PUBLIC_URL_BASE;
+    if (!raw) return undefined;
+    let end = raw.length;
+    while (end > 0 && raw[end - 1] === '/') end--;
+    return raw.slice(0, end);
+  }
+
   publicUrl(key: string): string {
-    const base = process.env.AWS_S3_PUBLIC_URL_BASE?.replace(/\/+$/, '');
+    const base = this.publicUrlBase;
     if (base) {
       return `${base}/${key}`;
     }
@@ -60,11 +70,16 @@ export class S3StorageService {
   }
 
   private keyFromUrl(url: string): string {
-    const base = process.env.AWS_S3_PUBLIC_URL_BASE?.replace(/\/+$/, '');
+    const base = this.publicUrlBase;
     if (base && url.startsWith(base)) {
       return url.slice(base.length + 1);
     }
     // https://<bucket>.s3.<region>.amazonaws.com/<key>
-    return decodeURIComponent(new URL(url).pathname).replace(/^\/+/, '');
+    // decodeURIComponent: `publicUrl` embebe la key cruda, `new URL().pathname`
+    // la devuelve percent-encoded; hay que revertirlo para recuperar la key exacta.
+    const path = decodeURIComponent(new URL(url).pathname);
+    let start = 0;
+    while (start < path.length && path[start] === '/') start++;
+    return path.slice(start);
   }
 }
