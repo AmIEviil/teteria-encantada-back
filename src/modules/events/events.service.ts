@@ -760,9 +760,16 @@ export class EventsService {
     tickets: EventTicket[],
     buyerEmail: string,
   ): PublicPurchaseResult {
+    const ticketTypeNameById = new Map(
+      (event.ticketTypes ?? []).map((ticketType) => [
+        ticketType.id,
+        ticketType.name,
+      ]),
+    );
+
     const mapped = tickets.map((ticket) => ({
       id: ticket.id,
-      ticketTypeName: ticket.ticketType?.name ?? '',
+      ticketTypeName: ticketTypeNameById.get(ticket.ticketTypeId) ?? '',
       attendeeFirstName: ticket.attendeeFirstName,
       attendeeLastName: ticket.attendeeLastName,
       attendanceDate: this.toDateOnly(ticket.attendanceDate),
