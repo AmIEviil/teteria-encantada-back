@@ -27,18 +27,23 @@ describe('getRemainingForSession', () => {
     const svc = makeService(3);
     const session: any = { id: 's1', capacity: 10, allocations: [] };
     const ticketType: any = { id: 't1', totalStock: null };
-    await expect(svc.getRemainingForSession(session, ticketType)).resolves.toBe(7);
+    await expect(svc.getRemainingForSession(session, ticketType)).resolves.toBe(
+      7,
+    );
   });
 
   it('is capped by the smallest applicable layer (allocation)', async () => {
     const svc = makeService(1);
     const session: any = {
-      id: 's1', capacity: 10,
+      id: 's1',
+      capacity: 10,
       allocations: [{ ticketTypeId: 't1', quantity: 2 }],
     };
     const ticketType: any = { id: 't1', totalStock: null };
     // capacity remaining 9, allocation remaining 1 -> min 1
-    await expect(svc.getRemainingForSession(session, ticketType)).resolves.toBe(1);
+    await expect(svc.getRemainingForSession(session, ticketType)).resolves.toBe(
+      1,
+    );
   });
 });
 
@@ -46,7 +51,9 @@ describe('getRemainingForType', () => {
   it('returns null (unlimited) when no dailyStocks and no totalStock', async () => {
     const svc = makeService(5);
     const ticketType: any = { id: 't1', dailyStocks: [], totalStock: null };
-    await expect(svc.getRemainingForType(ticketType, '2026-08-01')).resolves.toBeNull();
+    await expect(
+      svc.getRemainingForType(ticketType, '2026-08-01'),
+    ).resolves.toBeNull();
   });
 
   it('returns 0 when a day has no configured daily stock', async () => {
@@ -56,13 +63,17 @@ describe('getRemainingForType', () => {
       dailyStocks: [{ date: '2026-08-02', quantity: 5 }],
       totalStock: null,
     };
-    await expect(svc.getRemainingForType(ticketType, '2026-08-01')).resolves.toBe(0);
+    await expect(
+      svc.getRemainingForType(ticketType, '2026-08-01'),
+    ).resolves.toBe(0);
   });
 
   it('returns totalStock minus sold when only totalStock set', async () => {
     const svc = makeService(4);
     const ticketType: any = { id: 't1', dailyStocks: [], totalStock: 10 };
-    await expect(svc.getRemainingForType(ticketType, '2026-08-01')).resolves.toBe(6);
+    await expect(
+      svc.getRemainingForType(ticketType, '2026-08-01'),
+    ).resolves.toBe(6);
   });
 
   it('returns quantity minus sold when the day matches a configured dailyStock entry', async () => {

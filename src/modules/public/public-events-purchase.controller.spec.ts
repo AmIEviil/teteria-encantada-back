@@ -4,11 +4,16 @@ import { PublicService } from './public.service';
 
 describe('PublicController — events detail & purchase', () => {
   const publicService = {
-    findMenu: jest.fn(), findTables: jest.fn(), findEvents: jest.fn(),
-    findReservations: jest.fn(), findReservationSchedule: jest.fn(),
+    findMenu: jest.fn(),
+    findTables: jest.fn(),
+    findEvents: jest.fn(),
+    findReservations: jest.fn(),
+    findReservationSchedule: jest.fn(),
     createReservation: jest.fn(),
     findEvent: jest.fn().mockResolvedValue({ id: 'e1', title: 'Evento' }),
-    purchase: jest.fn().mockResolvedValue({ eventId: 'e1', total: 5000, tickets: [] }),
+    purchase: jest
+      .fn()
+      .mockResolvedValue({ eventId: 'e1', total: 5000, tickets: [] }),
   };
 
   let controller: PublicController;
@@ -22,13 +27,20 @@ describe('PublicController — events detail & purchase', () => {
   });
 
   it('GET events/:id delegates to service', async () => {
-    await expect(controller.findEvent('e1')).resolves.toEqual({ id: 'e1', title: 'Evento' });
+    await expect(controller.findEvent('e1')).resolves.toEqual({
+      id: 'e1',
+      title: 'Evento',
+    });
     expect(publicService.findEvent).toHaveBeenCalledWith('e1');
   });
 
   it('POST events/:id/tickets delegates to service', async () => {
     const dto: any = { buyerEmail: 'a@b.cl', items: [] };
-    await expect(controller.purchase('e1', dto)).resolves.toEqual({ eventId: 'e1', total: 5000, tickets: [] });
+    await expect(controller.purchase('e1', dto)).resolves.toEqual({
+      eventId: 'e1',
+      total: 5000,
+      tickets: [],
+    });
     expect(publicService.purchase).toHaveBeenCalledWith('e1', dto);
   });
 });

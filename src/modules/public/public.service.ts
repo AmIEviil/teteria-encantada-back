@@ -196,7 +196,8 @@ export class PublicService {
       .slice()
       .sort(
         (a, b) =>
-          a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime),
+          a.date.localeCompare(b.date) ||
+          a.startTime.localeCompare(b.startTime),
       )
       .map((session) => ({
         date: session.date,

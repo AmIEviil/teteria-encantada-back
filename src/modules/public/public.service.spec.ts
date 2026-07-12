@@ -35,7 +35,10 @@ describe('PublicService', () => {
         },
         {
           provide: EventsService,
-          useValue: { getPublicDetail: jest.fn(), createPublicTickets: jest.fn() },
+          useValue: {
+            getPublicDetail: jest.fn(),
+            createPublicTickets: jest.fn(),
+          },
         },
       ],
     }).compile();

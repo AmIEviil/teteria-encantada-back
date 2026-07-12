@@ -520,7 +520,11 @@ export class EventsService {
 
       const sessionRepository = entityManager.getRepository(EventSession);
 
-      if (nextIsFreeEntry || updateEventDto.sessions || isChangingSessionsMode) {
+      if (
+        nextIsFreeEntry ||
+        updateEventDto.sessions ||
+        isChangingSessionsMode
+      ) {
         await sessionRepository.delete({ eventId: id });
       }
 
@@ -783,7 +787,9 @@ export class EventsService {
         ? this.buildMenuSelectionSummary(
             // ponytail: el snapshot persistido es Record<string, unknown>; el
             // shape real lo produce resolveMenuSelectionForTicket.
-            ticket.menuSelectionSnapshot as any,
+            ticket.menuSelectionSnapshot as unknown as {
+              groups: MenuSelectionSnapshotGroup[];
+            },
           )
         : null,
     }));
@@ -2115,15 +2121,21 @@ export class EventsService {
       if (!dailyStock) return 0; // sin cupo configurado para ese día
       const soldForDay = await this.eventTicketRepository
         .createQueryBuilder('ticket')
-        .where('ticket.ticketTypeId = :ticketTypeId', { ticketTypeId: ticketType.id })
-        .andWhere('ticket.status = :status', { status: EventTicketStatus.ACTIVE })
+        .where('ticket.ticketTypeId = :ticketTypeId', {
+          ticketTypeId: ticketType.id,
+        })
+        .andWhere('ticket.status = :status', {
+          status: EventTicketStatus.ACTIVE,
+        })
         .andWhere('ticket.attendanceDate = :attendanceDate', { attendanceDate })
         .getCount();
       layers.push(Math.max(0, dailyStock.quantity - soldForDay));
     }
 
     if (ticketType.totalStock !== null) {
-      const soldTotal = await this.countActiveTickets({ ticketTypeId: ticketType.id });
+      const soldTotal = await this.countActiveTickets({
+        ticketTypeId: ticketType.id,
+      });
       layers.push(Math.max(0, ticketType.totalStock - soldTotal));
     }
 
@@ -2136,7 +2148,9 @@ export class EventsService {
   ): Promise<number | null> {
     const layers: number[] = [];
 
-    const soldForSession = await this.countActiveTickets({ sessionId: session.id });
+    const soldForSession = await this.countActiveTickets({
+      sessionId: session.id,
+    });
     layers.push(Math.max(0, session.capacity - soldForSession));
 
     const allocation = (session.allocations ?? []).find(
@@ -2151,7 +2165,9 @@ export class EventsService {
     }
 
     if (ticketType.totalStock !== null) {
-      const soldTotal = await this.countActiveTickets({ ticketTypeId: ticketType.id });
+      const soldTotal = await this.countActiveTickets({
+        ticketTypeId: ticketType.id,
+      });
       layers.push(Math.max(0, ticketType.totalStock - soldTotal));
     }
 
@@ -2215,7 +2231,9 @@ export class EventsService {
         remaining: sessionRemaining,
         seatsRemaining: Math.max(0, s.capacity - soldForSession),
         available:
-          event.isFreeEntry || sessionRemaining === null || sessionRemaining > 0,
+          event.isFreeEntry ||
+          sessionRemaining === null ||
+          sessionRemaining > 0,
         ticketTypes: perType,
       });
     }

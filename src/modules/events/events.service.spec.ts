@@ -1058,7 +1058,12 @@ describe('EventsService', () => {
             buildSession({
               capacity: 100,
               allocations: [
-                { id: 'al-1', sessionId: 'ss-1', ticketTypeId: 'tt-1', quantity: 2 },
+                {
+                  id: 'al-1',
+                  sessionId: 'ss-1',
+                  ticketTypeId: 'tt-1',
+                  quantity: 2,
+                },
               ],
             }),
           ],

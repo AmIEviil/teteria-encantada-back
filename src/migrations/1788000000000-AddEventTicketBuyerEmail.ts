@@ -10,6 +10,8 @@ export class AddEventTicketBuyerEmail1788000000000 implements MigrationInterface
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "event_tickets" DROP COLUMN "buyerEmail"`);
+    await queryRunner.query(
+      `ALTER TABLE "event_tickets" DROP COLUMN "buyerEmail"`,
+    );
   }
 }

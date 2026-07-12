@@ -6,7 +6,10 @@ describe('CreateEventSessionDto.name', () => {
   const base = { date: '2026-08-01', startTime: '10:00', capacity: 10 };
 
   it('accepts an optional name', async () => {
-    const dto = plainToInstance(CreateEventSessionDto, { ...base, name: 'Cata de té' });
+    const dto = plainToInstance(CreateEventSessionDto, {
+      ...base,
+      name: 'Cata de té',
+    });
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
     expect(dto.name).toBe('Cata de té');
@@ -19,7 +22,10 @@ describe('CreateEventSessionDto.name', () => {
   });
 
   it('rejects a name longer than 160 chars', async () => {
-    const dto = plainToInstance(CreateEventSessionDto, { ...base, name: 'x'.repeat(161) });
+    const dto = plainToInstance(CreateEventSessionDto, {
+      ...base,
+      name: 'x'.repeat(161),
+    });
     const errors = await validate(dto);
     expect(errors.some((e) => e.property === 'name')).toBe(true);
   });

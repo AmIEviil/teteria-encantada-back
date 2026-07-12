@@ -1,13 +1,8 @@
 import { EventsService } from './events.service';
 
-// Typed as `any` (not `EventsService & Record<string, any>`) so that stubbing
-// private members here doesn't trip `tsc`'s private-access checks; ts-jest
-// doesn't enforce this diagnostic, but plain `tsc --noEmit` does.
-type AnyService = any;
-
 describe('createPublicTickets', () => {
   const buildService = () => {
-    const svc = Object.create(EventsService.prototype) as AnyService;
+    const svc = Object.create(EventsService.prototype);
     svc.syncEventSoldTickets = jest.fn().mockResolvedValue(undefined);
     svc.findOne = jest.fn().mockResolvedValue({
       id: 'e1',
@@ -17,7 +12,9 @@ describe('createPublicTickets', () => {
         { id: 'tt2', name: 'Entrada VIP' },
       ],
     });
-    svc.eventTicketRepository = { delete: jest.fn().mockResolvedValue(undefined) };
+    svc.eventTicketRepository = {
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
     return svc;
   };
 
@@ -29,14 +26,50 @@ describe('createPublicTickets', () => {
     // reality; the ticket type name must be resolved from `event.ticketTypes`.
     svc.createTicket = jest
       .fn()
-      .mockResolvedValueOnce([{ id: 'k1', ticketTypeId: 'tt1', attendeeFirstName: 'Ana', attendeeLastName: 'P', attendanceDate: '2026-08-01', sessionId: null, price: 5000, menuExtraPrice: 0, includesDetails: null, menuSelectionSnapshot: null }])
-      .mockResolvedValueOnce([{ id: 'k2', ticketTypeId: 'tt2', attendeeFirstName: 'Leo', attendeeLastName: 'R', attendanceDate: '2026-08-01', sessionId: null, price: 7000, menuExtraPrice: 0, includesDetails: null, menuSelectionSnapshot: null }]);
+      .mockResolvedValueOnce([
+        {
+          id: 'k1',
+          ticketTypeId: 'tt1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'P',
+          attendanceDate: '2026-08-01',
+          sessionId: null,
+          price: 5000,
+          menuExtraPrice: 0,
+          includesDetails: null,
+          menuSelectionSnapshot: null,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'k2',
+          ticketTypeId: 'tt2',
+          attendeeFirstName: 'Leo',
+          attendeeLastName: 'R',
+          attendanceDate: '2026-08-01',
+          sessionId: null,
+          price: 7000,
+          menuExtraPrice: 0,
+          includesDetails: null,
+          menuSelectionSnapshot: null,
+        },
+      ]);
 
     const result = await svc.createPublicTickets('e1', {
       buyerEmail: 'a@b.cl',
       items: [
-        { ticketTypeId: 't1', attendanceDate: new Date('2026-08-01'), attendeeFirstName: 'Ana', attendeeLastName: 'P' },
-        { ticketTypeId: 't2', attendanceDate: new Date('2026-08-01'), attendeeFirstName: 'Leo', attendeeLastName: 'R' },
+        {
+          ticketTypeId: 't1',
+          attendanceDate: new Date('2026-08-01'),
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'P',
+        },
+        {
+          ticketTypeId: 't2',
+          attendanceDate: new Date('2026-08-01'),
+          attendeeFirstName: 'Leo',
+          attendeeLastName: 'R',
+        },
       ],
     });
 
@@ -52,15 +85,27 @@ describe('createPublicTickets', () => {
     const svc = buildService();
     svc.createTicket = jest
       .fn()
-      .mockResolvedValueOnce([{ id: 'k1', ticketTypeId: 'tt1', price: 5000, menuExtraPrice: 0 }])
+      .mockResolvedValueOnce([
+        { id: 'k1', ticketTypeId: 'tt1', price: 5000, menuExtraPrice: 0 },
+      ])
       .mockRejectedValueOnce(new Error('sin cupo'));
 
     await expect(
       svc.createPublicTickets('e1', {
         buyerEmail: 'a@b.cl',
         items: [
-          { ticketTypeId: 't1', attendanceDate: new Date(), attendeeFirstName: 'Ana', attendeeLastName: 'P' },
-          { ticketTypeId: 't2', attendanceDate: new Date(), attendeeFirstName: 'Leo', attendeeLastName: 'R' },
+          {
+            ticketTypeId: 't1',
+            attendanceDate: new Date(),
+            attendeeFirstName: 'Ana',
+            attendeeLastName: 'P',
+          },
+          {
+            ticketTypeId: 't2',
+            attendanceDate: new Date(),
+            attendeeFirstName: 'Leo',
+            attendeeLastName: 'R',
+          },
         ],
       }),
     ).rejects.toThrow('sin cupo');

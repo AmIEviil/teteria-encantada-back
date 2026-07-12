@@ -8,7 +8,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
-import type { PublicEventDetail, PublicPurchaseResult } from '../events/events.service';
+import type {
+  PublicEventDetail,
+  PublicPurchaseResult,
+} from '../events/events.service';
 import { PublicCreateReservationDto } from './dto/public-create-reservation.dto';
 import { PublicFindReservationsDto } from './dto/public-find-reservations.dto';
 import { PublicPurchaseDto } from './dto/public-purchase.dto';
@@ -61,7 +64,9 @@ export class PublicController {
   }
 
   @Get('events/:id')
-  findEvent(@Param('id', ParseUUIDPipe) id: string): Promise<PublicEventDetail> {
+  findEvent(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PublicEventDetail> {
     return this.publicService.findEvent(id);
   }
 
