@@ -29,6 +29,6 @@ import { S3StorageService, S3_CLIENT } from './storage/s3-storage.service';
         }),
     },
   ],
-  exports: [ImagesService],
+  exports: [ImagesService, S3StorageService],
 })
 export class ImagesModule {}

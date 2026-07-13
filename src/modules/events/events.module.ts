@@ -6,6 +6,7 @@ import { EventTicket } from './entities/event-ticket.entity';
 import { Event } from './entities/event.entity';
 import { EventSession } from './entities/event-session.entity';
 import { EventSessionTicketAllocation } from './entities/event-session-ticket-allocation.entity';
+import { EventPurchase } from './entities/event-purchase.entity';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
@@ -19,6 +20,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
       EventTicket,
       EventSession,
       EventSessionTicketAllocation,
+      EventPurchase,
     ]),
     LoyaltyModule,
   ],

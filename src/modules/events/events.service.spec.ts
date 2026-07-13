@@ -282,6 +282,27 @@ describe('EventsService', () => {
       expect(txTicketType.save).toHaveBeenCalled();
     });
 
+    it('persiste customTicketTemplateUrl del ticket type', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent());
+      await service.create({
+        title: 'Evento',
+        startsAt: START,
+        endsAt: END,
+        ticketTypes: [
+          makeTicketTypeDto({
+            name: 'VIP',
+            customTicketTemplateUrl: 'https://s3/tpl.png',
+          }),
+        ],
+      } as never);
+
+      expect(txTicketType.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customTicketTemplateUrl: 'https://s3/tpl.png',
+        }),
+      );
+    });
+
     it.each([
       ['nombres duplicados', [makeTicketTypeDto(), makeTicketTypeDto()]],
       [
@@ -599,7 +620,7 @@ describe('EventsService', () => {
         title: ' Nuevo ',
         description: 'd',
         officialImageUrl: 'http://img',
-        status: EventStatus.DISABLED,
+        status: EventStatus.SUSPENDED,
       } as never);
       expect(result).toBeDefined();
       expect(txEvent.save).toHaveBeenCalled();
@@ -714,7 +735,7 @@ describe('EventsService', () => {
     it('actualiza estado', async () => {
       eventRepo.findOne.mockResolvedValue(buildEvent());
       const result = await service.updateStatus('ev-1', {
-        status: EventStatus.DISABLED,
+        status: EventStatus.SUSPENDED,
       } as never);
       expect(eventRepo.save).toHaveBeenCalled();
       expect(result).toBeDefined();
@@ -749,7 +770,7 @@ describe('EventsService', () => {
 
     it('rechaza evento no habilitado', async () => {
       eventRepo.findOne.mockResolvedValue(
-        buildEvent({ status: EventStatus.DISABLED }),
+        buildEvent({ status: EventStatus.SUSPENDED }),
       );
       await expect(
         service.createTicket('ev-1', dto() as never),
@@ -805,6 +826,63 @@ describe('EventsService', () => {
       const result = await service.createTicket('ev-1', dto() as never);
       expect(result).toHaveLength(1);
       expect(eventRepo.update).toHaveBeenCalled();
+    });
+
+    it('persiste el purchaseId pasado en opts en el ticket creado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+      const result = await service.createTicket('ev-1', dto() as never, {
+        purchaseId: 'purchase-1',
+      });
+      expect(result[0].purchaseId).toBe('purchase-1');
+    });
+
+    it('sin opts, el ticket creado queda con purchaseId null', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+      const result = await service.createTicket('ev-1', dto() as never);
+      expect(result[0].purchaseId).toBeNull();
+    });
+
+    it('con allowOversell:true crea el ticket aunque no haya cupo del evento (oversell aceptado en fulfill de pago ya cobrado)', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          totalTickets: 1,
+          soldTickets: 1,
+          ticketTypes: [buildTicketType()],
+        }),
+      );
+      const result = await service.createTicket('ev-1', dto() as never, {
+        allowOversell: true,
+      });
+      expect(result).toHaveLength(1);
+    });
+
+    it('con allowOversell:true crea el ticket aunque el cupo total del tipo este agotado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType({ totalStock: 1 })] }),
+      );
+      ticketQb.getCount.mockResolvedValue(1);
+      const result = await service.createTicket(
+        'ev-1',
+        dto({ quantity: 1 }) as never,
+        { allowOversell: true },
+      );
+      expect(result).toHaveLength(1);
+    });
+
+    it('sin allowOversell (comportamiento normal), sigue rechazando cupo total agotado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType({ totalStock: 1 })] }),
+      );
+      ticketQb.getCount.mockResolvedValue(1);
+      await expect(
+        service.createTicket('ev-1', dto({ quantity: 1 }) as never, {
+          allowOversell: false,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('devenga puntos de asistencia en taller con cliente registrado', async () => {
@@ -1079,6 +1157,259 @@ describe('EventsService', () => {
           attendeeFirstName: 'Ana',
           attendeeLastName: 'Diaz',
         } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('quotePublicPurchase', () => {
+    it('quotePublicPurchase suma precio base + extra de menú por item', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        id: 'e1',
+        status: 'ENABLED',
+        hasSessions: false,
+        ticketTypes: [
+          {
+            id: 'tt1',
+            name: 'Gen',
+            price: 5000,
+            menuMode: 'FIXED',
+            menuTemplate: null,
+          },
+        ],
+        sessions: [],
+      } as any);
+
+      const total = await service.quotePublicPurchase('e1', [
+        {
+          ticketTypeId: 'tt1',
+          attendeeFirstName: 'A',
+          attendeeLastName: 'B',
+          attendanceDate: new Date('2026-08-01'),
+        },
+        {
+          ticketTypeId: 'tt1',
+          attendeeFirstName: 'C',
+          attendeeLastName: 'D',
+          attendanceDate: new Date('2026-08-01'),
+        },
+      ]);
+      expect(total).toBe(10000);
+    });
+
+    it('incluye el extra de menu personalizado en el total', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [
+            buildTicketType({
+              id: 'tt-1',
+              price: 100,
+              ...customizableTemplate(),
+            }),
+          ],
+        }),
+      );
+
+      const total = await service.quotePublicPurchase('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection: {
+            groups: [{ groupKey: 'plato', optionIds: ['pollo'] }],
+          } as never,
+        },
+      ]);
+
+      // base 100 + extra de "pollo" (10) = 110
+      expect(total).toBe(110);
+    });
+
+    it('suma multiples items de distintos tipos de ticket', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [
+            buildTicketType({ id: 'tt-1', price: 100 }),
+            buildTicketType({ id: 'tt-2', price: 250 }),
+          ],
+        }),
+      );
+
+      const total = await service.quotePublicPurchase('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+        {
+          ticketTypeId: 'tt-2',
+          attendeeFirstName: 'Luis',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+        {
+          ticketTypeId: 'tt-2',
+          attendeeFirstName: 'Eva',
+          attendeeLastName: 'Ruiz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+      ]);
+
+      // 100 + 250 + 250 = 600
+      expect(total).toBe(600);
+    });
+
+    it('rechaza un ticketTypeId que no pertenece al evento en vez de cobrar 0', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [buildTicketType({ id: 'tt-1', price: 100 })],
+        }),
+      );
+
+      await expect(
+        service.quotePublicPurchase('ev-1', [
+          {
+            ticketTypeId: 'no-existe',
+            attendeeFirstName: 'Ana',
+            attendeeLastName: 'Paz',
+            attendanceDate: new Date('2026-07-02'),
+          },
+        ]),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('cotiza tickets promocionales a precio de lista (quantity:1, applyPromotion:false)', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [
+            buildTicketType({
+              id: 'tt-1',
+              price: 100,
+              isPromotional: true,
+              promoMinQuantity: 2,
+              promoBundlePrice: 150,
+            }),
+          ],
+        }),
+      );
+
+      const total = await service.quotePublicPurchase('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Luis',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+      ]);
+
+      // Precio de lista (100 x 2 = 200), no el precio promocional en bloque
+      // (150). La cotizacion nunca debe aplicar la promocion.
+      expect(total).toBe(200);
+    });
+
+    it('el total cotizado coincide con la suma de los tickets efectivamente creados', async () => {
+      const items = [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Luis',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+      ];
+
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [buildTicketType({ id: 'tt-1', price: 100 })],
+        }),
+      );
+
+      const total = await service.quotePublicPurchase('ev-1', items as never);
+
+      const result = await service.createPublicTickets('ev-1', {
+        buyerEmail: 'cliente@example.com',
+        items: items as never,
+      });
+
+      const sumOfTickets = result.tickets.reduce((sum, t) => sum + t.price, 0);
+      expect(total).toBe(sumOfTickets);
+    });
+
+    it('redondea el total a 2 decimales ante acumulacion de floats', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          ticketTypes: [
+            buildTicketType({
+              id: 'tt-1',
+              price: 10.1,
+              menuMode: EventTicketMenuMode.CUSTOMIZABLE,
+              menuTemplate: {
+                groups: [
+                  {
+                    key: 'extra',
+                    label: 'Extra',
+                    required: false,
+                    minSelect: 0,
+                    maxSelect: 1,
+                    options: [{ id: 'opt', label: 'Opcion', extraPrice: 0.2 }],
+                  },
+                ],
+              } as never,
+            }),
+          ],
+        }),
+      );
+
+      const menuSelection = {
+        groups: [{ groupKey: 'extra', optionIds: ['opt'] }],
+      } as never;
+
+      const total = await service.quotePublicPurchase('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'A',
+          attendeeLastName: 'B',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection,
+        },
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'C',
+          attendeeLastName: 'D',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection,
+        },
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'E',
+          attendeeLastName: 'F',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection,
+        },
+      ]);
+
+      expect(total).toBe(30.9);
+    });
+
+    it('rechaza una compra sin items', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+
+      await expect(
+        service.quotePublicPurchase('ev-1', []),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });

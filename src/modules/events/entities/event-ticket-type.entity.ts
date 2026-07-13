@@ -49,6 +49,9 @@ export class EventTicketType {
   @Column({ type: 'text', nullable: true })
   includesDetails!: string | null;
 
+  @Column({ type: 'varchar', length: 600, nullable: true })
+  customTicketTemplateUrl!: string | null;
+
   @Column({
     type: 'enum',
     enum: EventTicketMenuMode,

@@ -184,6 +184,7 @@ export class JwtValidationMiddleware implements NestMiddleware {
       '/api/public/events/:id/tickets',
       '/api/public/reservations',
       '/api/public/reservations/schedule',
+      '/api/public/events/:id/pay',
       '/',
     ];
 

@@ -40,7 +40,7 @@ describe('MigrationService', () => {
       release: jest.fn().mockResolvedValue(undefined),
       query: jest.fn().mockResolvedValue([]),
       isTransactionActive: true,
-    };
+    } as never;
     mig1 = {
       name: 'Mig1',
       up: jest.fn().mockResolvedValue(undefined),
