@@ -122,6 +122,9 @@ export class AuthService implements OnModuleInit {
       }
       if (!existing.googleId) {
         existing.googleId = profile.googleId;
+        existing.provider = AuthProvider.GOOGLE;
+        existing.first_name = profile.firstName.trim();
+        existing.last_name = profile.lastName?.trim() || null;
         await this.userRepository.save(existing);
       }
       return this.buildAuthResponse(existing);
