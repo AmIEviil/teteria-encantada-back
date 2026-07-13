@@ -24,7 +24,8 @@ export class PaymentsController {
 
   @Post('mercadopago/webhook')
   async webhook(@Body() body: MpWebhookBody): Promise<{ received: true }> {
-    const isPayment = body.type === 'payment' || body.action?.startsWith('payment');
+    const isPayment =
+      body.type === 'payment' || body.action?.startsWith('payment');
     if (isPayment && body.data?.id) {
       await this.paymentsService.handleWebhook(String(body.data.id));
     }

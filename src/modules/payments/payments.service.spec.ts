@@ -74,13 +74,19 @@ describe('PaymentsService', () => {
       id: 'e1',
       title: 'Ev',
       ticketTypes: [
-        { id: 'tt1', name: 'VIP', customTicketTemplateUrl: 'https://tpl/vip.png' },
+        {
+          id: 'tt1',
+          name: 'VIP',
+          customTicketTemplateUrl: 'https://tpl/vip.png',
+        },
       ],
     }),
   };
   const mp = { charge: jest.fn(), getPayment: jest.fn() };
   const mailer = { send: jest.fn().mockResolvedValue(undefined) };
-  const pdf = { buildTicketsPdf: jest.fn().mockResolvedValue(Buffer.from('PDF')) };
+  const pdf = {
+    buildTicketsPdf: jest.fn().mockResolvedValue(Buffer.from('PDF')),
+  };
 
   const build = () =>
     new PaymentsService(
@@ -111,7 +117,11 @@ describe('PaymentsService', () => {
 
   describe('pay', () => {
     it('approved: crea tickets una vez, envía correo una vez y marca la compra PAID', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'accredited' });
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+      });
       const svc = build();
 
       const res = await svc.pay('e1', basePayInput);
@@ -130,7 +140,11 @@ describe('PaymentsService', () => {
     });
 
     it('rejected: no crea tickets, no envía correo, y marca la compra REJECTED', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp2', status: 'rejected', statusDetail: 'cc_rejected' });
+      mp.charge.mockResolvedValue({
+        id: 'mp2',
+        status: 'rejected',
+        statusDetail: 'cc_rejected',
+      });
       const svc = build();
 
       const res = await svc.pay('e1', basePayInput);
@@ -139,11 +153,17 @@ describe('PaymentsService', () => {
       expect(res.purchase).toBeNull();
       expect(events.createPublicTickets).not.toHaveBeenCalled();
       expect(mailer.send).not.toHaveBeenCalled();
-      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.REJECTED);
+      expect(purchaseRepo.getValue()?.status).toBe(
+        EventPurchaseStatus.REJECTED,
+      );
     });
 
     it('pending/in_process: no crea tickets, no envía correo, y la compra sigue PENDING', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp3', status: 'in_process', statusDetail: 'pending_review' });
+      mp.charge.mockResolvedValue({
+        id: 'mp3',
+        status: 'in_process',
+        statusDetail: 'pending_review',
+      });
       const svc = build();
 
       const res = await svc.pay('e1', basePayInput);
@@ -156,7 +176,11 @@ describe('PaymentsService', () => {
     });
 
     it("status desconocido ('unknown' u otro no reconocido) se trata como rechazado, nunca fulfilla", async () => {
-      mp.charge.mockResolvedValue({ id: 'mp4', status: 'unknown', statusDetail: '' });
+      mp.charge.mockResolvedValue({
+        id: 'mp4',
+        status: 'unknown',
+        statusDetail: '',
+      });
       const svc = build();
 
       const res = await svc.pay('e1', basePayInput);
@@ -164,11 +188,17 @@ describe('PaymentsService', () => {
       expect(res.status).toBe('rejected');
       expect(events.createPublicTickets).not.toHaveBeenCalled();
       expect(mailer.send).not.toHaveBeenCalled();
-      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.REJECTED);
+      expect(purchaseRepo.getValue()?.status).toBe(
+        EventPurchaseStatus.REJECTED,
+      );
     });
 
     it('envía el idempotencyKey de MP igual al id de la compra (externalReference)', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'ok' });
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
       const svc = build();
 
       await svc.pay('e1', basePayInput);
@@ -179,7 +209,11 @@ describe('PaymentsService', () => {
     });
 
     it('usa el template por ticketTypeId (no por nombre) y consulta el evento una sola vez', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'ok' });
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
       const svc = build();
 
       await svc.pay('e1', basePayInput);
@@ -190,7 +224,11 @@ describe('PaymentsService', () => {
     });
 
     it('si el envío de correo falla, los tickets ya creados y el estado PAID se mantienen (no se revierte ni lanza)', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'ok' });
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
       mailer.send.mockRejectedValueOnce(new Error('smtp down'));
       const svc = build();
 
@@ -205,7 +243,11 @@ describe('PaymentsService', () => {
 
   describe('handleWebhook', () => {
     it('fulfill es idempotente: si ya está PAID (pay() inline ya fulfilló), el webhook no recrea', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'ok' });
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
       const svc = build();
 
       await svc.pay('e1', basePayInput);
@@ -228,7 +270,16 @@ describe('PaymentsService', () => {
       purchaseRepo = makePurchaseRepo({
         eventId: 'e1',
         buyerEmail: 'b@t.cl',
-        itemsSnapshot: [{ ticketTypeId: 'tt1', sessionId: null, attendanceDate: '2026-08-01', attendeeFirstName: 'A', attendeeLastName: 'B', menuSelection: null }],
+        itemsSnapshot: [
+          {
+            ticketTypeId: 'tt1',
+            sessionId: null,
+            attendanceDate: '2026-08-01',
+            attendeeFirstName: 'A',
+            attendeeLastName: 'B',
+            menuSelection: null,
+          },
+        ],
         status: EventPurchaseStatus.PENDING,
       });
       const svc = build();
@@ -264,7 +315,16 @@ describe('PaymentsService', () => {
       purchaseRepo = makePurchaseRepo({
         eventId: 'e1',
         buyerEmail: 'b@t.cl',
-        itemsSnapshot: [{ ticketTypeId: 'tt1', sessionId: null, attendanceDate: '2026-08-01', attendeeFirstName: 'A', attendeeLastName: 'B', menuSelection: null }],
+        itemsSnapshot: [
+          {
+            ticketTypeId: 'tt1',
+            sessionId: null,
+            attendanceDate: '2026-08-01',
+            attendeeFirstName: 'A',
+            attendeeLastName: 'B',
+            menuSelection: null,
+          },
+        ],
         status: EventPurchaseStatus.PENDING,
       });
       const svc = build();
@@ -289,7 +349,16 @@ describe('PaymentsService', () => {
       purchaseRepo = makePurchaseRepo({
         eventId: 'e1',
         buyerEmail: 'b@t.cl',
-        itemsSnapshot: [{ ticketTypeId: 'tt1', sessionId: null, attendanceDate: '2026-08-01', attendeeFirstName: 'A', attendeeLastName: 'B', menuSelection: null }],
+        itemsSnapshot: [
+          {
+            ticketTypeId: 'tt1',
+            sessionId: null,
+            attendanceDate: '2026-08-01',
+            attendeeFirstName: 'A',
+            attendeeLastName: 'B',
+            menuSelection: null,
+          },
+        ],
         status: EventPurchaseStatus.PENDING,
       });
       const svc = build();
@@ -310,7 +379,11 @@ describe('PaymentsService', () => {
 
   describe('recuperación tras fulfill fallido (post-claim)', () => {
     it('createPublicTickets falla tras el claim: revierte la compra a PENDING, propaga el error y no envía correo', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'ok' });
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
       events.createPublicTickets.mockRejectedValueOnce(new Error('boom'));
       const svc = build();
 
@@ -328,13 +401,18 @@ describe('PaymentsService', () => {
           criteria !== null &&
           Object.keys(criteria as object).length === 1 &&
           (criteria as Record<string, unknown>).id === 'p1' &&
-          (patch as Record<string, unknown>).status === EventPurchaseStatus.PENDING,
+          (patch as Record<string, unknown>).status ===
+            EventPurchaseStatus.PENDING,
       );
       expect(revertCall).toBeDefined();
     });
 
     it('tras un fulfill fallido, un webhook approved posterior recupera la compra: crea tickets y envía correo una sola vez', async () => {
-      mp.charge.mockResolvedValue({ id: 'mp1', status: 'approved', statusDetail: 'ok' });
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
       events.createPublicTickets.mockRejectedValueOnce(new Error('boom'));
       const svc = build();
 
@@ -364,7 +442,16 @@ describe('PaymentsService', () => {
       purchaseRepo = makePurchaseRepo({
         eventId: 'e1',
         buyerEmail: 'b@t.cl',
-        itemsSnapshot: [{ ticketTypeId: 'tt1', sessionId: null, attendanceDate: '2026-08-01', attendeeFirstName: 'A', attendeeLastName: 'B', menuSelection: null }],
+        itemsSnapshot: [
+          {
+            ticketTypeId: 'tt1',
+            sessionId: null,
+            attendanceDate: '2026-08-01',
+            attendeeFirstName: 'A',
+            attendeeLastName: 'B',
+            menuSelection: null,
+          },
+        ],
         status: EventPurchaseStatus.PENDING,
       });
       const svc = build();

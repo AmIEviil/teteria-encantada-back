@@ -45,10 +45,22 @@ describe('TicketsPdfService', () => {
 
   it('genera un PDF con una página por ticket (layout por defecto)', async () => {
     const buf = await svc.buildTicketsPdf([
-      { eventTitle: 'Noche de Té', ticketTypeName: 'VIP', attendeeName: 'Ana Díaz',
-        attendanceDate: '2026-08-01', sessionTime: '20:00', customTemplateUrl: null },
-      { eventTitle: 'Noche de Té', ticketTypeName: 'VIP', attendeeName: 'Luis Paz',
-        attendanceDate: '2026-08-01', sessionTime: '20:00', customTemplateUrl: null },
+      {
+        eventTitle: 'Noche de Té',
+        ticketTypeName: 'VIP',
+        attendeeName: 'Ana Díaz',
+        attendanceDate: '2026-08-01',
+        sessionTime: '20:00',
+        customTemplateUrl: null,
+      },
+      {
+        eventTitle: 'Noche de Té',
+        ticketTypeName: 'VIP',
+        attendeeName: 'Luis Paz',
+        attendanceDate: '2026-08-01',
+        sessionTime: '20:00',
+        customTemplateUrl: null,
+      },
     ]);
     const doc = await PDFDocument.load(buf);
     expect(doc.getPageCount()).toBe(2);
@@ -63,9 +75,14 @@ describe('TicketsPdfService', () => {
     );
     storage.getObjectByUrl.mockResolvedValue(png);
     const buf = await svc.buildTicketsPdf([
-      { eventTitle: 'E', ticketTypeName: 'T', attendeeName: 'N',
-        attendanceDate: '2026-08-01', sessionTime: null,
-        customTemplateUrl: 'https://s3/tpl.png' },
+      {
+        eventTitle: 'E',
+        ticketTypeName: 'T',
+        attendeeName: 'N',
+        attendanceDate: '2026-08-01',
+        sessionTime: null,
+        customTemplateUrl: 'https://s3/tpl.png',
+      },
     ]);
     const doc = await PDFDocument.load(buf);
     expect(doc.getPageCount()).toBe(1);
@@ -75,9 +92,14 @@ describe('TicketsPdfService', () => {
   it('si falla la descarga de la plantilla, igual genera el PDF con layout por defecto', async () => {
     storage.getObjectByUrl.mockRejectedValue(new Error('S3 unreachable'));
     const buf = await svc.buildTicketsPdf([
-      { eventTitle: 'E', ticketTypeName: 'T', attendeeName: 'N',
-        attendanceDate: '2026-08-01', sessionTime: null,
-        customTemplateUrl: 'https://s3/tpl.png' },
+      {
+        eventTitle: 'E',
+        ticketTypeName: 'T',
+        attendeeName: 'N',
+        attendanceDate: '2026-08-01',
+        sessionTime: null,
+        customTemplateUrl: 'https://s3/tpl.png',
+      },
     ]);
     const doc = await PDFDocument.load(buf);
     expect(doc.getPageCount()).toBe(1);
@@ -86,8 +108,14 @@ describe('TicketsPdfService', () => {
 
   it('no revienta con emoji en el título y conserva acentos en el nombre', async () => {
     const buf = await svc.buildTicketsPdf([
-      { eventTitle: 'Noche de Té 🎉', ticketTypeName: 'VIP', attendeeName: 'Ana Muñoz Díaz',
-        attendanceDate: '2026-08-01', sessionTime: '20:00', customTemplateUrl: null },
+      {
+        eventTitle: 'Noche de Té 🎉',
+        ticketTypeName: 'VIP',
+        attendeeName: 'Ana Muñoz Díaz',
+        attendanceDate: '2026-08-01',
+        sessionTime: '20:00',
+        customTemplateUrl: null,
+      },
     ]);
     const doc = await PDFDocument.load(buf);
     expect(doc.getPageCount()).toBe(1);
@@ -96,11 +124,18 @@ describe('TicketsPdfService', () => {
   });
 
   it('si la plantilla es una imagen corrupta/no embebible, igual genera el PDF', async () => {
-    storage.getObjectByUrl.mockResolvedValue(Buffer.from('esto no es una imagen valida'));
+    storage.getObjectByUrl.mockResolvedValue(
+      Buffer.from('esto no es una imagen valida'),
+    );
     const buf = await svc.buildTicketsPdf([
-      { eventTitle: 'E', ticketTypeName: 'T', attendeeName: 'N',
-        attendanceDate: '2026-08-01', sessionTime: null,
-        customTemplateUrl: 'https://s3/tpl.png' },
+      {
+        eventTitle: 'E',
+        ticketTypeName: 'T',
+        attendeeName: 'N',
+        attendanceDate: '2026-08-01',
+        sessionTime: null,
+        customTemplateUrl: 'https://s3/tpl.png',
+      },
     ]);
     const doc = await PDFDocument.load(buf);
     expect(doc.getPageCount()).toBe(1);
@@ -108,11 +143,18 @@ describe('TicketsPdfService', () => {
   });
 
   it('si la extensión de la plantilla no es png/jpg, igual genera el PDF', async () => {
-    storage.getObjectByUrl.mockResolvedValue(Buffer.from('contenido cualquiera'));
+    storage.getObjectByUrl.mockResolvedValue(
+      Buffer.from('contenido cualquiera'),
+    );
     const buf = await svc.buildTicketsPdf([
-      { eventTitle: 'E', ticketTypeName: 'T', attendeeName: 'N',
-        attendanceDate: '2026-08-01', sessionTime: null,
-        customTemplateUrl: 'https://s3/tpl.webp' },
+      {
+        eventTitle: 'E',
+        ticketTypeName: 'T',
+        attendeeName: 'N',
+        attendanceDate: '2026-08-01',
+        sessionTime: null,
+        customTemplateUrl: 'https://s3/tpl.webp',
+      },
     ]);
     const doc = await PDFDocument.load(buf);
     expect(doc.getPageCount()).toBe(1);

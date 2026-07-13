@@ -12,37 +12,47 @@ import {
 import { EventTicketMenuSelectionDto } from '../../events/dto/create-event-ticket.dto';
 
 export class PayItemDto {
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   ticketTypeId!: string;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   sessionId?: string;
 
-  @IsOptional() @Type(() => Date)
+  @IsOptional()
+  @Type(() => Date)
   attendanceDate?: Date;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   attendeeFirstName!: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   attendeeLastName!: string;
 
-  @IsOptional() @ValidateNested()
+  @IsOptional()
+  @ValidateNested()
   @Type(() => EventTicketMenuSelectionDto)
   menuSelection?: EventTicketMenuSelectionDto;
 }
 
 export class PaymentDetailsDto {
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   token!: string;
 
-  @IsInt() @Min(1)
+  @IsInt()
+  @Min(1)
   installments!: number;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   paymentMethodId!: string;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   issuerId?: string;
 }
 
@@ -50,10 +60,12 @@ export class PayEventDto {
   @IsEmail()
   buyerEmail!: string;
 
-  @IsArray() @ValidateNested({ each: true })
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => PayItemDto)
   items!: PayItemDto[];
 
-  @ValidateNested() @Type(() => PaymentDetailsDto)
+  @ValidateNested()
+  @Type(() => PaymentDetailsDto)
   payment!: PaymentDetailsDto;
 }

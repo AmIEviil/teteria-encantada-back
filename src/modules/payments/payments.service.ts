@@ -12,7 +12,10 @@ import {
   PublicPurchaseResult,
 } from '../events/events.service';
 import { MailerService } from '../mailer/mailer.service';
-import { TicketsPdfService, PdfTicketInput } from '../tickets-pdf/tickets-pdf.service';
+import {
+  TicketsPdfService,
+  PdfTicketInput,
+} from '../tickets-pdf/tickets-pdf.service';
 import { MercadoPagoService } from './mercadopago.service';
 
 export interface PayEventInput {
@@ -78,17 +81,27 @@ export class PaymentsService {
       idempotencyKey: purchase.id,
     });
 
-    await this.purchaseRepository.update(purchase.id, { mpPaymentId: charge.id });
+    await this.purchaseRepository.update(purchase.id, {
+      mpPaymentId: charge.id,
+    });
 
     const outcome = this.classifyOutcome(charge.status);
 
     if (outcome === 'approved') {
       const result = await this.fulfill(purchase.id);
-      return { status: 'approved', statusDetail: charge.statusDetail, purchase: result };
+      return {
+        status: 'approved',
+        statusDetail: charge.statusDetail,
+        purchase: result,
+      };
     }
 
     if (outcome === 'pending') {
-      return { status: 'pending', statusDetail: charge.statusDetail, purchase: null };
+      return {
+        status: 'pending',
+        statusDetail: charge.statusDetail,
+        purchase: null,
+      };
     }
 
     // rejected (incluye cualquier estado no reconocido, p.ej. 'unknown').
@@ -98,7 +111,11 @@ export class PaymentsService {
       { id: purchase.id, status: EventPurchaseStatus.PENDING },
       { status: EventPurchaseStatus.REJECTED },
     );
-    return { status: 'rejected', statusDetail: charge.statusDetail, purchase: null };
+    return {
+      status: 'rejected',
+      statusDetail: charge.statusDetail,
+      purchase: null,
+    };
   }
 
   async handleWebhook(paymentId: string): Promise<void> {
@@ -137,7 +154,9 @@ export class PaymentsService {
   // webhooks) corren en paralelo, sólo una gana la carrera (affected === 1);
   // la otra ve affected === 0 y no hace nada, evitando tickets/correos
   // duplicados.
-  private async fulfill(purchaseId: string): Promise<PublicPurchaseResult | null> {
+  private async fulfill(
+    purchaseId: string,
+  ): Promise<PublicPurchaseResult | null> {
     const purchase = await this.purchaseRepository.findOne({
       where: { id: purchaseId },
     });
@@ -244,7 +263,8 @@ export class PaymentsService {
         : null,
       attendeeFirstName: i.attendeeFirstName,
       attendeeLastName: i.attendeeLastName,
-      menuSelection: (i.menuSelection as Record<string, unknown> | undefined) ?? null,
+      menuSelection:
+        (i.menuSelection as Record<string, unknown> | undefined) ?? null,
     };
   }
 
@@ -255,7 +275,8 @@ export class PaymentsService {
       attendanceDate: s.attendanceDate ? new Date(s.attendanceDate) : undefined,
       attendeeFirstName: s.attendeeFirstName,
       attendeeLastName: s.attendeeLastName,
-      menuSelection: s.menuSelection as unknown as PublicPurchaseItemInput['menuSelection'],
+      menuSelection:
+        s.menuSelection as unknown as PublicPurchaseItemInput['menuSelection'],
     };
   }
 }

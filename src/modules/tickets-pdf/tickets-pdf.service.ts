@@ -37,13 +37,21 @@ export class TicketsPdfService {
         { text: `${t.ticketTypeName}`, size: 16, f: font },
         { text: t.attendeeName, size: 22, f: bold },
         { text: `Fecha: ${t.attendanceDate}`, size: 16, f: font },
-        { text: t.sessionTime ? `Horario: ${t.sessionTime}` : 'Horario: —', size: 16, f: font },
+        {
+          text: t.sessionTime ? `Horario: ${t.sessionTime}` : 'Horario: —',
+          size: 16,
+          f: font,
+        },
       ];
 
       let y = PAGE_H - MARGIN - 28;
       for (const l of lines) {
         page.drawText(this.sanitizeForFont(l.text, l.f), {
-          x: MARGIN, y, size: l.size, font: l.f, color: rgb(0.1, 0.1, 0.1),
+          x: MARGIN,
+          y,
+          size: l.size,
+          font: l.f,
+          color: rgb(0.1, 0.1, 0.1),
         });
         y -= l.size + 14;
       }

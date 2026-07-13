@@ -17,7 +17,8 @@ export interface MpChargeInput {
 
 export interface MpChargeResult {
   id: string;
-  status: 'approved' | 'in_process' | 'pending' | 'rejected' | string;
+  // MP puede devolver otros estados; los usados acá: approved | in_process | pending | rejected.
+  status: string;
   statusDetail: string;
 }
 

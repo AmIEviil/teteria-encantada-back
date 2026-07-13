@@ -4,7 +4,11 @@ import { PaymentsService } from './payments.service';
 
 describe('PaymentsController', () => {
   const service = {
-    pay: jest.fn().mockResolvedValue({ status: 'approved', statusDetail: 'ok', purchase: { tickets: [] } }),
+    pay: jest.fn().mockResolvedValue({
+      status: 'approved',
+      statusDetail: 'ok',
+      purchase: { tickets: [] },
+    }),
     handleWebhook: jest.fn().mockResolvedValue(undefined),
   };
   let controller: PaymentsController;
@@ -19,7 +23,11 @@ describe('PaymentsController', () => {
   });
 
   it('POST pay delega en el servicio', async () => {
-    const dto: any = { buyerEmail: 'a@b.cl', items: [], payment: { token: 't', installments: 1, paymentMethodId: 'visa' } };
+    const dto: any = {
+      buyerEmail: 'a@b.cl',
+      items: [],
+      payment: { token: 't', installments: 1, paymentMethodId: 'visa' },
+    };
     await controller.pay('e1', dto);
     expect(service.pay).toHaveBeenCalledWith('e1', dto);
   });

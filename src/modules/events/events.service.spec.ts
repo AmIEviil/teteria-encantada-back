@@ -1168,7 +1168,13 @@ describe('EventsService', () => {
         status: 'ENABLED',
         hasSessions: false,
         ticketTypes: [
-          { id: 'tt1', name: 'Gen', price: 5000, menuMode: 'FIXED', menuTemplate: null },
+          {
+            id: 'tt1',
+            name: 'Gen',
+            price: 5000,
+            menuMode: 'FIXED',
+            menuTemplate: null,
+          },
         ],
         sessions: [],
       } as any);
@@ -1193,7 +1199,13 @@ describe('EventsService', () => {
     it('incluye el extra de menu personalizado en el total', async () => {
       eventRepo.findOne.mockResolvedValue(
         buildEvent({
-          ticketTypes: [buildTicketType({ id: 'tt-1', price: 100, ...customizableTemplate() })],
+          ticketTypes: [
+            buildTicketType({
+              id: 'tt-1',
+              price: 100,
+              ...customizableTemplate(),
+            }),
+          ],
         }),
       );
 
@@ -1250,7 +1262,9 @@ describe('EventsService', () => {
 
     it('rechaza un ticketTypeId que no pertenece al evento en vez de cobrar 0', async () => {
       eventRepo.findOne.mockResolvedValue(
-        buildEvent({ ticketTypes: [buildTicketType({ id: 'tt-1', price: 100 })] }),
+        buildEvent({
+          ticketTypes: [buildTicketType({ id: 'tt-1', price: 100 })],
+        }),
       );
 
       await expect(
@@ -1317,7 +1331,9 @@ describe('EventsService', () => {
       ];
 
       eventRepo.findOne.mockResolvedValue(
-        buildEvent({ ticketTypes: [buildTicketType({ id: 'tt-1', price: 100 })] }),
+        buildEvent({
+          ticketTypes: [buildTicketType({ id: 'tt-1', price: 100 })],
+        }),
       );
 
       const total = await service.quotePublicPurchase('ev-1', items as never);
