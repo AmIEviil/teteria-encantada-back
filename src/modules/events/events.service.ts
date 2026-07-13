@@ -143,6 +143,14 @@ export interface PublicPurchaseItemInput {
 export interface PublicPurchaseInput {
   buyerEmail: string;
   items: PublicPurchaseItemInput[];
+  // Enlaza cada ticket creado con la compra desde su creación (ver
+  // EventsService.createTicket / PaymentsService.fulfill). Opcional: los
+  // llamadores existentes (endpoint público de tickets gratis, admin) no lo
+  // envían y conservan el comportamiento actual (purchaseId null).
+  purchaseId?: string | null;
+  // Ver EventsService.createTicket: cuando true, salta las validaciones de
+  // stock/capacidad. Sólo debe usarse al fulfillar una compra ya cobrada.
+  allowOversell?: boolean;
 }
 
 export interface PublicPurchaseTicket {
@@ -620,7 +628,11 @@ export class EventsService {
   async createTicket(
     eventId: string,
     createEventTicketDto: CreateEventTicketDto,
-    opts?: { buyerEmail?: string | null },
+    opts?: {
+      buyerEmail?: string | null;
+      purchaseId?: string | null;
+      allowOversell?: boolean;
+    },
   ): Promise<EventTicket[]> {
     const event = await this.findOne(eventId);
     const quantity = createEventTicketDto.quantity ?? 1;
@@ -658,17 +670,27 @@ export class EventsService {
     }
 
     this.assertAttendanceDateInsideEvent(attendanceDate, event);
-    this.assertEventCapacityAvailable(event, true, quantity);
 
-    if (session) {
-      await this.ensureSessionAvailability(session, ticketType, quantity);
-    } else {
-      await this.ensureAvailability(
-        ticketType,
-        attendanceDate,
-        undefined,
-        quantity,
-      );
+    // opts.allowOversell: sólo lo usa PaymentsService.fulfill al entregar
+    // tickets de una compra YA COBRADA por MercadoPago. El cobro ya fue
+    // capturado antes de llegar aquí, así que la entrega no puede fallar por
+    // stock agotado entre la cotización y este momento (dejaría al cliente
+    // cobrado y sin tickets, con el webhook reintentando para siempre). Se
+    // acepta el oversell raro en ese único camino; todo otro llamador
+    // (checkout normal, admin) sigue respetando el cupo.
+    if (!opts?.allowOversell) {
+      this.assertEventCapacityAvailable(event, true, quantity);
+
+      if (session) {
+        await this.ensureSessionAvailability(session, ticketType, quantity);
+      } else {
+        await this.ensureAvailability(
+          ticketType,
+          attendanceDate,
+          undefined,
+          quantity,
+        );
+      }
     }
 
     const basePrice = createEventTicketDto.price ?? ticketType.price;
@@ -699,6 +721,7 @@ export class EventsService {
         attendeeFirstName: createEventTicketDto.attendeeFirstName.trim(),
         attendeeLastName: createEventTicketDto.attendeeLastName.trim(),
         buyerEmail: opts?.buyerEmail ?? null,
+        purchaseId: opts?.purchaseId ?? null,
         attendanceDate,
         sessionId: session?.id ?? null,
         price: unitPrice + menuSelectionResult.snapshot.totalExtraPrice,
@@ -793,7 +816,11 @@ export class EventsService {
             menuSelection: item.menuSelection,
             quantity: 1,
           } as CreateEventTicketDto,
-          { buyerEmail: input.buyerEmail },
+          {
+            buyerEmail: input.buyerEmail,
+            purchaseId: input.purchaseId,
+            allowOversell: input.allowOversell,
+          },
         );
         created.push(ticket);
       }

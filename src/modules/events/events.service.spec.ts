@@ -828,6 +828,63 @@ describe('EventsService', () => {
       expect(eventRepo.update).toHaveBeenCalled();
     });
 
+    it('persiste el purchaseId pasado en opts en el ticket creado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+      const result = await service.createTicket('ev-1', dto() as never, {
+        purchaseId: 'purchase-1',
+      });
+      expect(result[0].purchaseId).toBe('purchase-1');
+    });
+
+    it('sin opts, el ticket creado queda con purchaseId null', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+      const result = await service.createTicket('ev-1', dto() as never);
+      expect(result[0].purchaseId).toBeNull();
+    });
+
+    it('con allowOversell:true crea el ticket aunque no haya cupo del evento (oversell aceptado en fulfill de pago ya cobrado)', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          totalTickets: 1,
+          soldTickets: 1,
+          ticketTypes: [buildTicketType()],
+        }),
+      );
+      const result = await service.createTicket('ev-1', dto() as never, {
+        allowOversell: true,
+      });
+      expect(result).toHaveLength(1);
+    });
+
+    it('con allowOversell:true crea el ticket aunque el cupo total del tipo este agotado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType({ totalStock: 1 })] }),
+      );
+      ticketQb.getCount.mockResolvedValue(1);
+      const result = await service.createTicket(
+        'ev-1',
+        dto({ quantity: 1 }) as never,
+        { allowOversell: true },
+      );
+      expect(result).toHaveLength(1);
+    });
+
+    it('sin allowOversell (comportamiento normal), sigue rechazando cupo total agotado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType({ totalStock: 1 })] }),
+      );
+      ticketQb.getCount.mockResolvedValue(1);
+      await expect(
+        service.createTicket('ev-1', dto({ quantity: 1 }) as never, {
+          allowOversell: false,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('devenga puntos de asistencia en taller con cliente registrado', async () => {
       eventRepo.findOne.mockResolvedValue(
         buildEvent({

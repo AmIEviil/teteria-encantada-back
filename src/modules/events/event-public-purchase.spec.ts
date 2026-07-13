@@ -113,4 +113,46 @@ describe('createPublicTickets', () => {
     expect(svc.eventTicketRepository.delete).toHaveBeenCalledWith(['k1']);
     expect(svc.syncEventSoldTickets).toHaveBeenCalled();
   });
+
+  it('forwards purchaseId and allowOversell to each createTicket call', async () => {
+    const svc = buildService();
+    svc.createTicket = jest.fn().mockResolvedValue([
+      {
+        id: 'k1',
+        ticketTypeId: 'tt1',
+        attendeeFirstName: 'Ana',
+        attendeeLastName: 'P',
+        attendanceDate: '2026-08-01',
+        sessionId: null,
+        price: 5000,
+        menuExtraPrice: 0,
+        includesDetails: null,
+        menuSelectionSnapshot: null,
+      },
+    ]);
+
+    await svc.createPublicTickets('e1', {
+      buyerEmail: 'a@b.cl',
+      purchaseId: 'purchase-1',
+      allowOversell: true,
+      items: [
+        {
+          ticketTypeId: 't1',
+          attendanceDate: new Date('2026-08-01'),
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'P',
+        },
+      ],
+    });
+
+    expect(svc.createTicket).toHaveBeenCalledWith(
+      'e1',
+      expect.objectContaining({ ticketTypeId: 't1' }),
+      {
+        buyerEmail: 'a@b.cl',
+        purchaseId: 'purchase-1',
+        allowOversell: true,
+      },
+    );
+  });
 });

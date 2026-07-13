@@ -6,7 +6,6 @@ import {
   EventPurchaseItemSnapshot,
   EventPurchaseStatus,
 } from '../events/entities/event-purchase.entity';
-import { EventTicket } from '../events/entities/event-ticket.entity';
 import {
   EventsService,
   PublicPurchaseItemInput,
@@ -42,8 +41,6 @@ export class PaymentsService {
   constructor(
     @InjectRepository(EventPurchase)
     private readonly purchaseRepository: Repository<EventPurchase>,
-    @InjectRepository(EventTicket)
-    private readonly ticketRepository: Repository<EventTicket>,
     private readonly eventsService: EventsService,
     private readonly mercadoPago: MercadoPagoService,
     private readonly mailer: MailerService,
@@ -159,22 +156,25 @@ export class PaymentsService {
 
     let result: PublicPurchaseResult;
     try {
+      // purchaseId: se pasa a createPublicTickets para que cada ticket se
+      // persista YA enlazado a la compra (no una UPDATE separada después):
+      // si esa UPDATE separada fallara, los tickets quedarían committeados
+      // huérfanos (purchaseId null) y un reintento del webhook los
+      // duplicaría. allowOversell: el cobro ya fue capturado por MP en este
+      // punto, así que la entrega de tickets no puede fallar por falta de
+      // stock (decisión de producto: se acepta el oversell raro aquí).
       result = await this.eventsService.createPublicTickets(purchase.eventId, {
         buyerEmail: purchase.buyerEmail,
         items: purchase.itemsSnapshot.map((s) => this.fromSnapshot(s)),
+        purchaseId,
+        allowOversell: true,
       });
-
-      // enlazar tickets con la compra
-      await this.ticketRepository.update(
-        result.tickets.map((t) => t.id),
-        { purchaseId },
-      );
     } catch (err) {
-      // Ya reclamamos la fila (PAID) pero la creación/enlace de tickets
-      // falló: si dejáramos la fila en PAID quedaría cobrada y sin tickets
-      // para siempre (el próximo webhook vería affected === 0 y no
-      // reintentaría nada). Revertimos a PENDING para que un webhook
-      // 'approved' posterior pueda reclamarla de nuevo y reintentar.
+      // Ya reclamamos la fila (PAID) pero la creación de tickets falló: si
+      // dejáramos la fila en PAID quedaría cobrada y sin tickets para
+      // siempre (el próximo webhook vería affected === 0 y no reintentaría
+      // nada). Revertimos a PENDING para que un webhook 'approved'
+      // posterior pueda reclamarla de nuevo y reintentar.
       await this.purchaseRepository.update(
         { id: purchaseId },
         { status: EventPurchaseStatus.PENDING },

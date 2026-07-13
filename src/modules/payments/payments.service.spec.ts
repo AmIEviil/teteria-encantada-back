@@ -48,7 +48,6 @@ const makePurchaseRepo = (initial?: Record<string, unknown>) => {
 
 describe('PaymentsService', () => {
   let purchaseRepo: ReturnType<typeof makePurchaseRepo>;
-  let ticketRepo: { update: jest.Mock };
   const events = {
     quotePublicPurchase: jest.fn().mockResolvedValue(10000),
     createPublicTickets: jest.fn().mockResolvedValue({
@@ -86,7 +85,6 @@ describe('PaymentsService', () => {
   const build = () =>
     new PaymentsService(
       purchaseRepo as any,
-      ticketRepo as any,
       events as any,
       mp as any,
       mailer as any,
@@ -108,7 +106,6 @@ describe('PaymentsService', () => {
 
   beforeEach(() => {
     purchaseRepo = makePurchaseRepo();
-    ticketRepo = { update: jest.fn().mockResolvedValue(undefined) };
     jest.clearAllMocks();
   });
 
@@ -124,7 +121,12 @@ describe('PaymentsService', () => {
       expect(events.createPublicTickets).toHaveBeenCalledTimes(1);
       expect(mailer.send).toHaveBeenCalledTimes(1);
       expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
-      expect(ticketRepo.update).toHaveBeenCalledWith(['t1'], { purchaseId: 'p1' });
+      // Los tickets se crean YA enlazados a la compra (purchaseId pasado a
+      // createPublicTickets), no con una UPDATE separada después.
+      expect(events.createPublicTickets).toHaveBeenCalledWith(
+        'e1',
+        expect.objectContaining({ purchaseId: 'p1', allowOversell: true }),
+      );
     });
 
     it('rejected: no crea tickets, no envía correo, y marca la compra REJECTED', async () => {
@@ -316,7 +318,6 @@ describe('PaymentsService', () => {
 
       expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PENDING);
       expect(mailer.send).not.toHaveBeenCalled();
-      expect(ticketRepo.update).not.toHaveBeenCalled();
 
       // La compra debe haber sido explícitamente revertida a PENDING (no es
       // sólo que nunca llegó a PAID: el claim sí la marcó PAID antes de que
@@ -342,7 +343,6 @@ describe('PaymentsService', () => {
 
       events.createPublicTickets.mockClear();
       mailer.send.mockClear();
-      ticketRepo.update.mockClear();
 
       mp.getPayment.mockResolvedValue({
         id: 'mp1',
