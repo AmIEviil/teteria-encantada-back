@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { User } from '../auth/entities/user.entity';
+import { SYSTEM_ROLES } from '../auth/constants/system-roles.constant';
+import { AuthProvider, User } from '../auth/entities/user.entity';
+import { Role } from '../auth/entities/role.entity';
+import { AddWhitelistDto } from './dto/add-whitelist.dto';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { FindEmpleadoUsersDto } from './dto/find-empleado-users.dto';
 import { UpdateTrabajadorDto } from './dto/update-trabajador.dto';
@@ -61,6 +64,8 @@ export class TrabajadoresService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Trabajador)
     private readonly trabajadorRepository: Repository<Trabajador>,
+    @InjectRepository(Role)
+    private readonly roleRepository: Repository<Role>,
   ) {}
 
   async findUsers(
@@ -99,6 +104,12 @@ export class TrabajadoresService {
     if (filters.createdTo?.trim()) {
       queryBuilder.andWhere('user.createdAt <= :createdTo', {
         createdTo: `${filters.createdTo}T23:59:59.999Z`,
+      });
+    }
+
+    if (filters.onlyStaff) {
+      queryBuilder.andWhere('role.name != :clienteRole', {
+        clienteRole: SYSTEM_ROLES.CLIENTE,
       });
     }
 
@@ -231,6 +242,71 @@ export class TrabajadoresService {
     const savedTrabajador = await this.trabajadorRepository.save(trabajador);
 
     return this.toPublicTrabajador(savedTrabajador);
+  }
+
+  async addToWhitelist(dto: AddWhitelistDto): Promise<PublicEmpleadoUser> {
+    const email = dto.email.trim().toLowerCase();
+
+    const existing = await this.userRepository.findOneBy({ email });
+
+    if (existing) {
+      throw new ConflictException(
+        'Ya existe un usuario registrado con ese correo',
+      );
+    }
+
+    const role = await this.roleRepository
+      .createQueryBuilder('role')
+      .where('LOWER(role.name) = LOWER(:roleName)', { roleName: dto.roleName })
+      .getOne();
+
+    if (!role?.isActive) {
+      throw new NotFoundException(
+        `El rol ${dto.roleName} no existe o no está activo`,
+      );
+    }
+
+    const user = this.userRepository.create({
+      username: null,
+      first_name: email.split('@')[0].slice(0, 80),
+      last_name: null,
+      email,
+      passwordHash: null,
+      provider: AuthProvider.GOOGLE,
+      googleId: null,
+      role,
+      roleId: role.id,
+      isActive: true,
+      resetPasswordTokenHash: null,
+      resetPasswordExpiresAt: null,
+    });
+
+    const saved = await this.userRepository.save(user);
+
+    return this.toPublicEmpleadoUser(saved, null);
+  }
+
+  async setWhitelistActive(
+    id: string,
+    isActive: boolean,
+  ): Promise<PublicEmpleadoUser> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: { role: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    user.isActive = isActive;
+
+    const saved = await this.userRepository.save(user);
+    const trabajador = await this.trabajadorRepository.findOneBy({
+      userId: saved.id,
+    });
+
+    return this.toPublicEmpleadoUser(saved, trabajador);
   }
 
   private toPublicEmpleadoUser(

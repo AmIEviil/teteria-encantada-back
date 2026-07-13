@@ -10,12 +10,15 @@ import {
 } from '@nestjs/common';
 import { SYSTEM_ROLES } from '../auth/constants/system-roles.constant';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { AddWhitelistDto } from './dto/add-whitelist.dto';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { FindEmpleadoUsersDto } from './dto/find-empleado-users.dto';
+import { SetWhitelistActiveDto } from './dto/set-whitelist-active.dto';
 import { UpdateTrabajadorDto } from './dto/update-trabajador.dto';
 import {
   TrabajadoresService,
   type EmpleadoUsersResponse,
+  type PublicEmpleadoUser,
   type PublicTrabajador,
 } from './trabajadores.service';
 
@@ -29,6 +32,24 @@ export class TrabajadoresController {
     @Query() query: FindEmpleadoUsersDto,
   ): Promise<EmpleadoUsersResponse> {
     return this.trabajadoresService.findUsers(query);
+  }
+
+  @Post('whitelist')
+  addToWhitelist(
+    @Body() addWhitelistDto: AddWhitelistDto,
+  ): Promise<PublicEmpleadoUser> {
+    return this.trabajadoresService.addToWhitelist(addWhitelistDto);
+  }
+
+  @Patch('whitelist/:id')
+  setWhitelistActive(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() setWhitelistActiveDto: SetWhitelistActiveDto,
+  ): Promise<PublicEmpleadoUser> {
+    return this.trabajadoresService.setWhitelistActive(
+      id,
+      setWhitelistActiveDto.isActive,
+    );
   }
 
   @Post()
