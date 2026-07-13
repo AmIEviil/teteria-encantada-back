@@ -237,6 +237,11 @@ export class CreateEventDto {
   status?: EventStatus;
 
   @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  publishAt?: Date;
+
+  @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
   isFreeEntry?: boolean;

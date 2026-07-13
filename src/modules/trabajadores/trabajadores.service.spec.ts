@@ -231,4 +231,80 @@ describe('TrabajadoresService', () => {
       expect(result.id).toBe('tr1');
     });
   });
+
+  describe('normalizacion de campos opcionales', () => {
+    const baseDto = {
+      userId: 'u1',
+      rut: '11.111.111-1',
+      comuna: 'Santiago',
+      direccion: 'calle 1',
+      telefono: '123',
+      fechaNacimiento: '1990-01-01',
+      edad: 34,
+      sueldo: 500000,
+    };
+
+    it('create deja fotoUrl en null cuando llega vacia y sin documentos', async () => {
+      trabajadorRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildTrabajador());
+      userRepo.findOne.mockResolvedValue(buildUser());
+
+      await service.create({ ...baseDto, fotoUrl: '   ' } as never);
+
+      const created = trabajadorRepo.create.mock.calls[0][0] as {
+        fotoUrl: string | null;
+        documentos: unknown[];
+      };
+      expect(created.fotoUrl).toBeNull();
+      expect(created.documentos).toEqual([]);
+    });
+
+    it('create normaliza los campos opcionales de cada documento', async () => {
+      trabajadorRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildTrabajador());
+      userRepo.findOne.mockResolvedValue(buildUser());
+
+      await service.create({
+        ...baseDto,
+        documentos: [
+          {
+            nombreArchivo: ' contrato.pdf ',
+            rutaArchivo: ' /docs/contrato.pdf ',
+            tipoMime: '   ',
+            descripcion: '  ',
+          },
+        ],
+      } as never);
+
+      const documento = documentoRepo.create.mock.calls[0][0] as {
+        nombreArchivo: string;
+        rutaArchivo: string;
+        tipoMime: string | null;
+        tamanoBytes: number | null;
+        descripcion: string | null;
+      };
+      expect(documento.nombreArchivo).toBe('contrato.pdf');
+      expect(documento.rutaArchivo).toBe('/docs/contrato.pdf');
+      expect(documento.tipoMime).toBeNull();
+      expect(documento.tamanoBytes).toBeNull();
+      expect(documento.descripcion).toBeNull();
+    });
+
+    it('update sin campos conserva los valores actuales', async () => {
+      const existing = buildTrabajador({ documentos: undefined });
+      trabajadorRepo.findOne.mockResolvedValueOnce(existing);
+      trabajadorRepo.save.mockImplementation((t: unknown) =>
+        Promise.resolve(t),
+      );
+
+      const result = await service.update('tr1', {} as never);
+
+      expect(result.rut).toBe('11.111.111-1');
+      expect(result.comuna).toBe('Santiago');
+      expect(result.sueldo).toBe(500000);
+      expect(result.documentos).toEqual([]);
+    });
+  });
 });

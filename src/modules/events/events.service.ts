@@ -4,8 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, LessThanOrEqual, Repository } from 'typeorm';
 import {
   CreateEventTicketDto,
   EventTicketMenuSelectionDto,
@@ -190,6 +191,12 @@ export class EventsService {
 
   async create(createEventDto: CreateEventDto): Promise<Event> {
     this.validateEventDates(createEventDto.startsAt, createEventDto.endsAt);
+    const status = createEventDto.status ?? EventStatus.ENABLED;
+    const publishAt = this.resolvePublishAt(
+      status,
+      createEventDto.publishAt,
+      createEventDto.startsAt,
+    );
     const isFreeEntry = createEventDto.isFreeEntry ?? false;
     const hasSessions = createEventDto.hasSessions ?? false;
     const ticketTypes = createEventDto.ticketTypes ?? [];
@@ -255,7 +262,8 @@ export class EventsService {
           officialImageUrl: this.normalizeTextToNullable(
             createEventDto.officialImageUrl,
           ),
-          status: createEventDto.status ?? EventStatus.ENABLED,
+          status,
+          publishAt,
           totalTickets,
           soldTickets: 0,
           isFreeEntry,
@@ -505,13 +513,20 @@ export class EventsService {
           ? event.officialImageUrl
           : this.normalizeTextToNullable(updateEventDto.officialImageUrl);
 
+      const nextStatus = updateEventDto.status ?? event.status;
+
       Object.assign(event, {
         title: updateEventDto.title?.trim() ?? event.title,
         description: nextDescription,
         startsAt,
         endsAt,
         officialImageUrl: nextOfficialImageUrl,
-        status: updateEventDto.status ?? event.status,
+        status: nextStatus,
+        publishAt: this.resolvePublishAt(
+          nextStatus,
+          updateEventDto.publishAt ?? event.publishAt ?? undefined,
+          startsAt,
+        ),
         isFreeEntry: nextIsFreeEntry,
       });
 
@@ -599,6 +614,11 @@ export class EventsService {
     const event = await this.findOne(id);
 
     event.status = updateEventStatusDto.status;
+    event.publishAt = this.resolvePublishAt(
+      updateEventStatusDto.status,
+      updateEventStatusDto.publishAt ?? event.publishAt ?? undefined,
+      event.startsAt,
+    );
 
     await this.eventRepository.save(event);
 
@@ -838,6 +858,24 @@ export class EventsService {
     return this.toPublicPurchaseResult(event, created, input.buyerEmail);
   }
 
+  // Correlativo de cada ticket dentro de su jornada (evento + fecha + sesión),
+  // en orden de creación. Se calcula por consulta en vez de persistirse en una
+  // columna: no necesita migración. Cuenta también los cancelados a propósito,
+  // así un cancelado no renumera los tickets ya emitidos de esa jornada.
+  async getTicketSequences(eventId: string): Promise<Map<string, number>> {
+    const rows: Array<{ id: string; seq: string }> =
+      await this.eventTicketRepository.query(
+        `SELECT id, ROW_NUMBER() OVER (
+           PARTITION BY "eventId", "attendanceDate", "sessionId"
+           ORDER BY "createdAt", id
+         ) AS seq
+         FROM event_tickets
+         WHERE "eventId" = $1`,
+        [eventId],
+      );
+    return new Map(rows.map((row) => [row.id, Number(row.seq)]));
+  }
+
   private toPublicPurchaseResult(
     event: Event,
     tickets: EventTicket[],
@@ -1074,6 +1112,45 @@ export class EventsService {
         'La fecha y hora de termino debe ser mayor al inicio del evento',
       );
     }
+  }
+
+  /**
+   * publishAt solo tiene sentido en COMING_SOON: es el momento en que el cron
+   * pasa el evento a ENABLED. En cualquier otro estado se limpia.
+   */
+  private resolvePublishAt(
+    status: EventStatus,
+    publishAt: Date | undefined,
+    startsAt: Date,
+  ): Date | null {
+    if (status !== EventStatus.COMING_SOON) {
+      return null;
+    }
+
+    if (!publishAt) {
+      throw new BadRequestException(
+        'Debes indicar la fecha y hora de publicacion para un evento proximamente',
+      );
+    }
+
+    if (publishAt > startsAt) {
+      throw new BadRequestException(
+        'La fecha de publicacion debe ser anterior al inicio del evento',
+      );
+    }
+
+    return publishAt;
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async publishScheduledEvents(): Promise<void> {
+    await this.eventRepository.update(
+      {
+        status: EventStatus.COMING_SOON,
+        publishAt: LessThanOrEqual(new Date()),
+      },
+      { status: EventStatus.ENABLED, publishAt: null },
+    );
   }
 
   private validateTicketTypes(

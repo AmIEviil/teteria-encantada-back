@@ -80,7 +80,9 @@ describe('PaymentsService', () => {
           customTicketTemplateUrl: 'https://tpl/vip.png',
         },
       ],
+      sessions: [{ id: 's1', startTime: '10:00:00' }],
     }),
+    getTicketSequences: jest.fn().mockResolvedValue(new Map([['t1', 1]])),
   };
   const mp = { charge: jest.fn(), getPayment: jest.fn() };
   const mailer = { send: jest.fn().mockResolvedValue(undefined) };
@@ -221,6 +223,42 @@ describe('PaymentsService', () => {
       expect(events.findOne).toHaveBeenCalledTimes(1);
       const pdfInputs = pdf.buildTicketsPdf.mock.calls[0][0];
       expect(pdfInputs[0].customTemplateUrl).toBe('https://tpl/vip.png');
+    });
+
+    it('arma el Ticket nro como #dia+mes+hora+correlativo de la jornada', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
+      events.createPublicTickets.mockResolvedValueOnce({
+        eventId: 'e1',
+        eventTitle: 'Ev',
+        buyerEmail: 'b@t.cl',
+        total: 10000,
+        tickets: [
+          {
+            id: 't1',
+            ticketTypeName: 'VIP',
+            attendeeFirstName: 'A',
+            attendeeLastName: 'B',
+            attendanceDate: '2026-07-17',
+            sessionId: 's1',
+            price: 10000,
+            menuExtraPrice: 0,
+            includesDetails: null,
+            menuSummary: 'Té + scone',
+          },
+        ],
+      });
+      const svc = build();
+
+      await svc.pay('e1', basePayInput);
+
+      const pdfInputs = pdf.buildTicketsPdf.mock.calls[0][0];
+      expect(pdfInputs[0].ticketNumber).toBe('#17071001');
+      expect(pdfInputs[0].sessionTime).toBe('10:00');
+      expect(pdfInputs[0].menuSummary).toBe('Té + scone');
     });
 
     it('si el envío de correo falla, los tickets ya creados y el estado PAID se mantienen (no se revierte ni lanza)', async () => {

@@ -74,4 +74,36 @@ describe('MercadoPagoService', () => {
     expect(res.externalReference).toBe('purchase-9');
     expect(res.status).toBe('approved');
   });
+
+  it('charge usa valores por defecto cuando MP omite status', async () => {
+    delete process.env.MP_ACCESS_TOKEN;
+    create.mockResolvedValue({ id: 200 });
+    const svc = new MercadoPagoService();
+
+    const res = await svc.charge({
+      amount: 1000,
+      token: 'tok',
+      installments: 1,
+      paymentMethodId: 'visa',
+      payerEmail: 'a@b.cl',
+      description: 'Tickets',
+      externalReference: 'purchase-200',
+    });
+
+    expect(res).toEqual({ id: '200', status: 'unknown', statusDetail: '' });
+  });
+
+  it('getPayment usa valores por defecto cuando MP omite campos', async () => {
+    get.mockResolvedValue({ id: 201 });
+    const svc = new MercadoPagoService();
+
+    const res = await svc.getPayment('201');
+
+    expect(res).toEqual({
+      id: '201',
+      status: 'unknown',
+      statusDetail: '',
+      externalReference: null,
+    });
+  });
 });

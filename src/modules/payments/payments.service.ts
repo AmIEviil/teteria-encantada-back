@@ -224,10 +224,20 @@ export class PaymentsService {
         ]),
       );
 
+      const sessionTimeById = new Map(
+        (event.sessions ?? []).map((s) => [s.id, s.startTime.slice(0, 5)]),
+      );
+      const seqByTicketId = await this.eventsService.getTicketSequences(
+        purchase.eventId,
+      );
+
       const pdfInputs: PdfTicketInput[] = result.tickets.map((t, index) => {
         const snapshotItem = purchase.itemsSnapshot[index];
         const customTemplateUrl = snapshotItem
           ? (templateUrlByTicketTypeId.get(snapshotItem.ticketTypeId) ?? null)
+          : null;
+        const sessionTime = t.sessionId
+          ? (sessionTimeById.get(t.sessionId) ?? null)
           : null;
 
         return {
@@ -235,7 +245,13 @@ export class PaymentsService {
           ticketTypeName: t.ticketTypeName,
           attendeeName: `${t.attendeeFirstName} ${t.attendeeLastName}`,
           attendanceDate: t.attendanceDate,
-          sessionTime: null,
+          sessionTime,
+          menuSummary: t.menuSummary,
+          ticketNumber: this.buildTicketNumber(
+            t.attendanceDate,
+            sessionTime,
+            seqByTicketId.get(t.id) ?? index + 1,
+          ),
           customTemplateUrl,
         };
       });
@@ -252,6 +268,19 @@ export class PaymentsService {
       // no debe hacer fallar la request ni revertir nada. Se registra y sigue.
       this.logger.error(`Fallo enviando correo de tickets: ${String(err)}`);
     }
+  }
+
+  // "#" + día + mes + hora de la jornada + correlativo del ticket en esa
+  // jornada. Ej: 17 de julio, jornada de las 10:00, primer ticket -> #17071001.
+  // Sin jornada (evento sin sesiones) la hora va en "00".
+  private buildTicketNumber(
+    attendanceDate: string,
+    sessionTime: string | null,
+    seq: number,
+  ): string {
+    const [, month, day] = attendanceDate.split('-');
+    const hour = sessionTime ? sessionTime.slice(0, 2) : '00';
+    return `#${day}${month}${hour}${String(seq).padStart(2, '0')}`;
   }
 
   private toSnapshot(i: PublicPurchaseItemInput): EventPurchaseItemSnapshot {

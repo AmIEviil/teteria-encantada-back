@@ -89,6 +89,40 @@ describe('TicketsPdfService', () => {
     expect(storage.getObjectByUrl).toHaveBeenCalledWith('https://s3/tpl.png');
   });
 
+  it('la página respeta el ratio de la plantilla y estampa los valores en ella', async () => {
+    // PNG 1x1 -> página cuadrada: prueba que el alto sale del ratio de la
+    // imagen y no del A4 fijo (que deformaba las plantillas 16:9).
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    storage.getObjectByUrl.mockResolvedValue(png);
+    const buf = await svc.buildTicketsPdf([
+      {
+        eventTitle: 'Coraline',
+        ticketTypeName: 'General',
+        attendeeName: 'Ana Díaz',
+        attendanceDate: '2026-07-17',
+        sessionTime: '10:00',
+        menuSummary: 'Té + scone',
+        ticketNumber: '#17071001',
+        customTemplateUrl: 'https://s3/tpl.png',
+      },
+    ]);
+    const doc = await PDFDocument.load(buf);
+    const page = doc.getPage(0);
+    expect(Math.round(page.getWidth())).toBe(842);
+    expect(Math.round(page.getHeight())).toBe(842);
+
+    const text = extractDrawnText(buf);
+    expect(text).toContain('Ana Díaz');
+    expect(text).toContain('17/07/2026 - 10:00');
+    expect(text).toContain('Té + scone');
+    expect(text).toContain('#17071001');
+    // El título y el tipo ya vienen impresos en la plantilla: no se redibujan.
+    expect(text).not.toContain('Coraline');
+  });
+
   it('si falla la descarga de la plantilla, igual genera el PDF con layout por defecto', async () => {
     storage.getObjectByUrl.mockRejectedValue(new Error('S3 unreachable'));
     const buf = await svc.buildTicketsPdf([

@@ -70,6 +70,7 @@ export interface PublicEventItem {
   description: string | null;
   startsAt: Date;
   endsAt: Date;
+  officialImageUrl: string | null;
   schedules: PublicEventScheduleItem[];
   ticketsAvailable: boolean;
 }
@@ -211,6 +212,7 @@ export class PublicService {
       description: event.description,
       startsAt: event.startsAt,
       endsAt: event.endsAt,
+      officialImageUrl: event.officialImageUrl,
       schedules,
       ticketsAvailable: this.hasTicketsAvailable(event),
     };
