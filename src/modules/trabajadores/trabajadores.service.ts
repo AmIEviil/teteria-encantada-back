@@ -9,18 +9,7 @@ import { User } from '../auth/entities/user.entity';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { FindEmpleadoUsersDto } from './dto/find-empleado-users.dto';
 import { UpdateTrabajadorDto } from './dto/update-trabajador.dto';
-import { TrabajadorDocumento } from './entities/trabajador-documento.entity';
 import { Trabajador } from './entities/trabajador.entity';
-
-export interface PublicTrabajadorDocumento {
-  id: string;
-  nombreArchivo: string;
-  rutaArchivo: string;
-  tipoMime: string | null;
-  tamanoBytes: number | null;
-  descripcion: string | null;
-  createdAt: Date;
-}
 
 export interface PublicTrabajador {
   id: string;
@@ -33,7 +22,6 @@ export interface PublicTrabajador {
   edad: number;
   sueldo: number;
   fotoUrl: string | null;
-  documentos: PublicTrabajadorDocumento[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,8 +61,6 @@ export class TrabajadoresService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Trabajador)
     private readonly trabajadorRepository: Repository<Trabajador>,
-    @InjectRepository(TrabajadorDocumento)
-    private readonly documentoRepository: Repository<TrabajadorDocumento>,
   ) {}
 
   async findUsers(
@@ -126,7 +112,6 @@ export class TrabajadoresService {
       userIds.length > 0
         ? await this.trabajadorRepository.find({
             where: { userId: In(userIds) },
-            relations: { documentos: true },
           })
         : [];
 
@@ -161,7 +146,7 @@ export class TrabajadoresService {
 
     const existingTrabajador = await this.trabajadorRepository.findOne({
       where: { userId: createTrabajadorDto.userId },
-      relations: { documentos: true, user: true },
+      relations: { user: true },
     });
 
     if (existingTrabajador) {
@@ -188,16 +173,6 @@ export class TrabajadoresService {
       edad: createTrabajadorDto.edad,
       sueldo: createTrabajadorDto.sueldo,
       fotoUrl: createTrabajadorDto.fotoUrl?.trim() || null,
-      documentos:
-        createTrabajadorDto.documentos?.map((documento) =>
-          this.documentoRepository.create({
-            nombreArchivo: documento.nombreArchivo.trim(),
-            rutaArchivo: documento.rutaArchivo.trim(),
-            tipoMime: documento.tipoMime?.trim() || null,
-            tamanoBytes: documento.tamanoBytes ?? null,
-            descripcion: documento.descripcion?.trim() || null,
-          }),
-        ) ?? [],
     });
 
     const savedTrabajador = await this.trabajadorRepository.save(trabajador);
@@ -208,7 +183,7 @@ export class TrabajadoresService {
   async findOne(id: string): Promise<PublicTrabajador> {
     const trabajador = await this.trabajadorRepository.findOne({
       where: { id },
-      relations: { user: { role: true }, documentos: true },
+      relations: { user: { role: true } },
     });
 
     if (!trabajador) {
@@ -224,7 +199,7 @@ export class TrabajadoresService {
   ): Promise<PublicTrabajador> {
     const trabajador = await this.trabajadorRepository.findOne({
       where: { id },
-      relations: { user: { role: true }, documentos: true },
+      relations: { user: { role: true } },
     });
 
     if (!trabajador) {
@@ -252,18 +227,6 @@ export class TrabajadoresService {
       sueldo: updateTrabajadorDto.sueldo ?? trabajador.sueldo,
       fotoUrl: updateTrabajadorDto.fotoUrl?.trim() ?? trabajador.fotoUrl,
     });
-
-    if (updateTrabajadorDto.documentos) {
-      trabajador.documentos = updateTrabajadorDto.documentos.map((documento) =>
-        this.documentoRepository.create({
-          nombreArchivo: documento.nombreArchivo.trim(),
-          rutaArchivo: documento.rutaArchivo.trim(),
-          tipoMime: documento.tipoMime?.trim() || null,
-          tamanoBytes: documento.tamanoBytes ?? null,
-          descripcion: documento.descripcion?.trim() || null,
-        }),
-      );
-    }
 
     const savedTrabajador = await this.trabajadorRepository.save(trabajador);
 
@@ -301,8 +264,6 @@ export class TrabajadoresService {
   }
 
   private toPublicTrabajador(trabajador: Trabajador): PublicTrabajador {
-    const documentos = trabajador.documentos ?? [];
-
     return {
       id: trabajador.id,
       userId: trabajador.userId,
@@ -314,15 +275,6 @@ export class TrabajadoresService {
       edad: trabajador.edad,
       sueldo: Number(trabajador.sueldo),
       fotoUrl: trabajador.fotoUrl,
-      documentos: documentos.map((documento) => ({
-        id: documento.id,
-        nombreArchivo: documento.nombreArchivo,
-        rutaArchivo: documento.rutaArchivo,
-        tipoMime: documento.tipoMime,
-        tamanoBytes: documento.tamanoBytes,
-        descripcion: documento.descripcion,
-        createdAt: documento.createdAt,
-      })),
       createdAt: trabajador.createdAt,
       updatedAt: trabajador.updatedAt,
     };

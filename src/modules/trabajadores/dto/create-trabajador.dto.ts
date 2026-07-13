@@ -1,6 +1,5 @@
 import { Type } from 'class-transformer';
 import {
-  IsArray,
   IsDateString,
   IsInt,
   IsOptional,
@@ -9,9 +8,7 @@ import {
   IsUUID,
   MaxLength,
   Min,
-  ValidateNested,
 } from 'class-validator';
-import { CreateTrabajadorDocumentoDto } from './create-trabajador-documento.dto';
 
 export class CreateTrabajadorDto {
   @IsUUID()
@@ -49,10 +46,4 @@ export class CreateTrabajadorDto {
   @IsString()
   @MaxLength(255)
   fotoUrl?: string;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateTrabajadorDocumentoDto)
-  documentos?: CreateTrabajadorDocumentoDto[];
 }

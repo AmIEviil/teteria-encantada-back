@@ -4,7 +4,6 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { TrabajadoresService } from './trabajadores.service';
 import { User } from '../auth/entities/user.entity';
 import { Trabajador } from './entities/trabajador.entity';
-import { TrabajadorDocumento } from './entities/trabajador-documento.entity';
 
 type AnyRepo = Record<string, jest.Mock>;
 
@@ -32,7 +31,6 @@ const buildTrabajador = (overrides = {}) => ({
   edad: 34,
   sueldo: 500000,
   fotoUrl: null,
-  documentos: [],
   user: buildUser(),
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -43,7 +41,6 @@ describe('TrabajadoresService', () => {
   let service: TrabajadoresService;
   let userRepo: AnyRepo;
   let trabajadorRepo: AnyRepo;
-  let documentoRepo: AnyRepo;
   let qb: AnyRepo;
 
   beforeEach(async () => {
@@ -66,17 +63,12 @@ describe('TrabajadoresService', () => {
       create: jest.fn((v) => ({ id: 'tr1', ...v })),
       save: jest.fn((v) => Promise.resolve(v)),
     };
-    documentoRepo = { create: jest.fn((v) => v) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         TrabajadoresService,
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(Trabajador), useValue: trabajadorRepo },
-        {
-          provide: getRepositoryToken(TrabajadorDocumento),
-          useValue: documentoRepo,
-        },
       ],
     }).compile();
     service = moduleRef.get(TrabajadoresService);
@@ -124,15 +116,6 @@ describe('TrabajadoresService', () => {
       edad: 34,
       sueldo: 500000,
       fotoUrl: ' http://f ',
-      documentos: [
-        {
-          nombreArchivo: ' doc ',
-          rutaArchivo: ' /ruta ',
-          tipoMime: ' application/pdf ',
-          tamanoBytes: 100,
-          descripcion: ' desc ',
-        },
-      ],
     };
 
     it('crea trabajador', async () => {
@@ -143,7 +126,6 @@ describe('TrabajadoresService', () => {
       trabajadorRepo.findOneBy.mockResolvedValue(null);
       const result = await service.create(dto as never);
       expect(result.id).toBe('tr1');
-      expect(documentoRepo.create).toHaveBeenCalled();
     });
 
     it('rechaza usuario inexistente', async () => {
@@ -173,23 +155,9 @@ describe('TrabajadoresService', () => {
 
   describe('findOne', () => {
     it('devuelve trabajador', async () => {
-      trabajadorRepo.findOne.mockResolvedValue(
-        buildTrabajador({
-          documentos: [
-            {
-              id: 'd1',
-              nombreArchivo: 'a',
-              rutaArchivo: '/a',
-              tipoMime: null,
-              tamanoBytes: null,
-              descripcion: null,
-              createdAt: new Date(),
-            },
-          ],
-        }),
-      );
+      trabajadorRepo.findOne.mockResolvedValue(buildTrabajador());
       const result = await service.findOne('tr1');
-      expect(result.documentos).toHaveLength(1);
+      expect(result.id).toBe('tr1');
     });
 
     it('lanza NotFound', async () => {
@@ -217,7 +185,7 @@ describe('TrabajadoresService', () => {
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('actualiza con documentos', async () => {
+    it('actualiza datos del trabajador', async () => {
       trabajadorRepo.findOne
         .mockResolvedValueOnce(buildTrabajador({ id: 'tr1' }))
         .mockResolvedValueOnce(null); // rut check (no conflict)
@@ -225,10 +193,9 @@ describe('TrabajadoresService', () => {
         rut: '11.111.111-1',
         comuna: 'Maipu',
         sueldo: 600000,
-        documentos: [{ nombreArchivo: 'd', rutaArchivo: '/d' }],
       } as never);
-      expect(documentoRepo.create).toHaveBeenCalled();
       expect(result.id).toBe('tr1');
+      expect(result.comuna).toBe('Maipu');
     });
   });
 
@@ -244,7 +211,7 @@ describe('TrabajadoresService', () => {
       sueldo: 500000,
     };
 
-    it('create deja fotoUrl en null cuando llega vacia y sin documentos', async () => {
+    it('create deja fotoUrl en null cuando llega vacia', async () => {
       trabajadorRepo.findOne
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(buildTrabajador());
@@ -254,46 +221,12 @@ describe('TrabajadoresService', () => {
 
       const created = trabajadorRepo.create.mock.calls[0][0] as {
         fotoUrl: string | null;
-        documentos: unknown[];
       };
       expect(created.fotoUrl).toBeNull();
-      expect(created.documentos).toEqual([]);
-    });
-
-    it('create normaliza los campos opcionales de cada documento', async () => {
-      trabajadorRepo.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(buildTrabajador());
-      userRepo.findOne.mockResolvedValue(buildUser());
-
-      await service.create({
-        ...baseDto,
-        documentos: [
-          {
-            nombreArchivo: ' contrato.pdf ',
-            rutaArchivo: ' /docs/contrato.pdf ',
-            tipoMime: '   ',
-            descripcion: '  ',
-          },
-        ],
-      } as never);
-
-      const documento = documentoRepo.create.mock.calls[0][0] as {
-        nombreArchivo: string;
-        rutaArchivo: string;
-        tipoMime: string | null;
-        tamanoBytes: number | null;
-        descripcion: string | null;
-      };
-      expect(documento.nombreArchivo).toBe('contrato.pdf');
-      expect(documento.rutaArchivo).toBe('/docs/contrato.pdf');
-      expect(documento.tipoMime).toBeNull();
-      expect(documento.tamanoBytes).toBeNull();
-      expect(documento.descripcion).toBeNull();
     });
 
     it('update sin campos conserva los valores actuales', async () => {
-      const existing = buildTrabajador({ documentos: undefined });
+      const existing = buildTrabajador();
       trabajadorRepo.findOne.mockResolvedValueOnce(existing);
       trabajadorRepo.save.mockImplementation((t: unknown) =>
         Promise.resolve(t),
@@ -304,7 +237,6 @@ describe('TrabajadoresService', () => {
       expect(result.rut).toBe('11.111.111-1');
       expect(result.comuna).toBe('Santiago');
       expect(result.sueldo).toBe(500000);
-      expect(result.documentos).toEqual([]);
     });
   });
 });

@@ -3,14 +3,12 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
-  OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { numericTransformer } from '../../../common/db/numeric.transformer';
 import { User } from '../../auth/entities/user.entity';
-import { TrabajadorDocumento } from './trabajador-documento.entity';
 
 @Entity('trabajadores')
 export class Trabajador {
@@ -52,13 +50,6 @@ export class Trabajador {
 
   @Column({ name: 'foto_url', type: 'varchar', length: 255, nullable: true })
   fotoUrl: string | null;
-
-  @OneToMany(() => TrabajadorDocumento, (documento) => documento.trabajador, {
-    cascade: true,
-    eager: true,
-    orphanedRowAction: 'delete',
-  })
-  documentos: TrabajadorDocumento[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
