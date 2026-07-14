@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class TrabajadorOptionalFields1789000000000
-  implements MigrationInterface
-{
+export class TrabajadorOptionalFields1789000000000 implements MigrationInterface {
   name = 'TrabajadorOptionalFields1789000000000';
 
   // Solo rut y telefono quedan obligatorios. Idempotente: synchronize ON pudo

@@ -49,7 +49,11 @@ const makePurchaseRepo = (initial?: Record<string, unknown>) => {
 describe('PaymentsService', () => {
   let purchaseRepo: ReturnType<typeof makePurchaseRepo>;
   const events = {
-    quotePublicPurchase: jest.fn().mockResolvedValue(10000),
+    quotePublicPurchaseDetailed: jest.fn().mockResolvedValue({
+      eventTitle: 'Ev',
+      lines: [{ ticketTypeId: 'tt1', ticketTypeName: 'VIP', unitPrice: 10000 }],
+      total: 10000,
+    }),
     createPublicTickets: jest.fn().mockResolvedValue({
       eventId: 'e1',
       eventTitle: 'Ev',
@@ -223,6 +227,259 @@ describe('PaymentsService', () => {
       expect(events.findOne).toHaveBeenCalledTimes(1);
       const pdfInputs = pdf.buildTicketsPdf.mock.calls[0][0];
       expect(pdfInputs[0].customTemplateUrl).toBe('https://tpl/vip.png');
+    });
+
+    it('describe el cobro a MP con título, fecha, desglose por tipo y total de tickets', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
+      events.quotePublicPurchaseDetailed.mockResolvedValueOnce({
+        eventTitle: 'Coraline',
+        lines: [
+          { ticketTypeId: 'tt1', ticketTypeName: 'General', unitPrice: 10000 },
+          { ticketTypeId: 'tt1', ticketTypeName: 'General', unitPrice: 10000 },
+          { ticketTypeId: 'tt2', ticketTypeName: 'VIP', unitPrice: 15000 },
+        ],
+        total: 35000,
+      });
+      const svc = build();
+
+      await svc.pay('e1', {
+        ...basePayInput,
+        items: [
+          basePayInput.items[0],
+          basePayInput.items[0],
+          basePayInput.items[0],
+        ],
+      });
+
+      expect(mp.charge.mock.calls[0][0].description).toBe(
+        'Tickets Coraline - 01/08/2026 - General x2, VIP x1 (3 tickets)',
+      );
+    });
+
+    it('varias fechas en la compra: las describe como rango', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
+      events.quotePublicPurchaseDetailed.mockResolvedValueOnce({
+        eventTitle: 'Coraline',
+        lines: [
+          { ticketTypeId: 'tt1', ticketTypeName: 'General', unitPrice: 10000 },
+          { ticketTypeId: 'tt1', ticketTypeName: 'General', unitPrice: 10000 },
+        ],
+        total: 20000,
+      });
+      const svc = build();
+
+      await svc.pay('e1', {
+        ...basePayInput,
+        items: [
+          basePayInput.items[0],
+          { ...basePayInput.items[0], attendanceDate: new Date('2026-08-03') },
+        ],
+      });
+
+      expect(mp.charge.mock.calls[0][0].description).toBe(
+        'Tickets Coraline - 01/08/2026 a 03/08/2026 - General x2 (2 tickets)',
+      );
+    });
+
+    it('manda a MP una línea por ticket con tipo, asistente, fecha y hora, cuadrando con el monto cobrado', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
+      // Los dos "General" son asistentes distintos y uno pagó extra de menú
+      // (12000): una línea por ticket, nunca agrupados.
+      events.quotePublicPurchaseDetailed.mockResolvedValueOnce({
+        eventTitle: 'Coraline',
+        lines: [
+          {
+            ticketTypeId: 'tt1',
+            ticketTypeName: 'General',
+            unitPrice: 10000,
+            attendeeName: 'Ana Pérez',
+            sessionTime: '10:00',
+          },
+          {
+            ticketTypeId: 'tt1',
+            ticketTypeName: 'General',
+            unitPrice: 12000,
+            attendeeName: 'Luis Soto',
+            sessionTime: '10:00',
+          },
+          {
+            ticketTypeId: 'tt2',
+            ticketTypeName: 'VIP',
+            unitPrice: 15000,
+            attendeeName: 'Eva Díaz',
+            sessionTime: null,
+          },
+        ],
+        total: 37000,
+      });
+      const svc = build();
+
+      await svc.pay('e1', {
+        ...basePayInput,
+        items: [
+          basePayInput.items[0],
+          basePayInput.items[0],
+          { ...basePayInput.items[0], attendanceDate: new Date('2026-08-03') },
+        ],
+      });
+
+      const chargeArgs = mp.charge.mock.calls[0][0];
+      expect(chargeArgs.items).toEqual([
+        {
+          id: 'tt1',
+          title: 'General - Ana Pérez - 01/08/2026 10:00',
+          quantity: 1,
+          unitPrice: 10000,
+        },
+        {
+          id: 'tt1',
+          title: 'General - Luis Soto - 01/08/2026 10:00',
+          quantity: 1,
+          unitPrice: 12000,
+        },
+        // Sin jornada: sólo fecha, sin hora colgando.
+        {
+          id: 'tt2',
+          title: 'VIP - Eva Díaz - 03/08/2026',
+          quantity: 1,
+          unitPrice: 15000,
+        },
+      ]);
+      const itemsTotal = chargeArgs.items.reduce(
+        (sum: number, i: { quantity: number; unitPrice: number }) =>
+          sum + i.quantity * i.unitPrice,
+        0,
+      );
+      expect(itemsTotal).toBe(chargeArgs.amount);
+    });
+
+    it('con más de 10 tickets agrupa por tipo+precio y mueve los asistentes a description', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
+      // 11 tickets (supera el umbral de 10): 4 General a 10000, 3 General a
+      // 12000 (menú extra distinto → precio distinto → línea distinta) y 4 VIP.
+      const lines = [
+        ...Array.from({ length: 4 }, (_, i) => ({
+          ticketTypeId: 'tt1',
+          ticketTypeName: 'General',
+          unitPrice: 10000,
+          attendeeName: `Gen${i + 1}`,
+          sessionTime: null,
+        })),
+        ...Array.from({ length: 3 }, (_, i) => ({
+          ticketTypeId: 'tt1',
+          ticketTypeName: 'General',
+          unitPrice: 12000,
+          attendeeName: `GenMenu${i + 1}`,
+          sessionTime: null,
+        })),
+        ...Array.from({ length: 4 }, (_, i) => ({
+          ticketTypeId: 'tt2',
+          ticketTypeName: 'VIP',
+          unitPrice: 15000,
+          attendeeName: `Vip${i + 1}`,
+          sessionTime: null,
+        })),
+      ];
+      events.quotePublicPurchaseDetailed.mockResolvedValueOnce({
+        eventTitle: 'Coraline',
+        lines,
+        total: 136000,
+      });
+      const svc = build();
+
+      await svc.pay('e1', {
+        ...basePayInput,
+        items: lines.map(() => basePayInput.items[0]),
+      });
+
+      const chargeArgs = mp.charge.mock.calls[0][0];
+      // Tres líneas agrupadas (tipo+precio), asistentes en description.
+      expect(chargeArgs.items).toEqual([
+        {
+          id: 'tt1',
+          title: 'General',
+          quantity: 4,
+          unitPrice: 10000,
+          description:
+            'Gen1 - 01/08/2026, Gen2 - 01/08/2026, Gen3 - 01/08/2026, ' +
+            'Gen4 - 01/08/2026',
+        },
+        {
+          id: 'tt1',
+          title: 'General',
+          quantity: 3,
+          unitPrice: 12000,
+          description:
+            'GenMenu1 - 01/08/2026, GenMenu2 - 01/08/2026, GenMenu3 - 01/08/2026',
+        },
+        {
+          id: 'tt2',
+          title: 'VIP',
+          quantity: 4,
+          unitPrice: 15000,
+          description:
+            'Vip1 - 01/08/2026, Vip2 - 01/08/2026, Vip3 - 01/08/2026, ' +
+            'Vip4 - 01/08/2026',
+        },
+      ]);
+      const itemsTotal = chargeArgs.items.reduce(
+        (sum: number, i: { quantity: number; unitPrice: number }) =>
+          sum + i.quantity * i.unitPrice,
+        0,
+      );
+      expect(itemsTotal).toBe(chargeArgs.amount);
+    });
+
+    it('con exactamente 10 tickets NO agrupa (una línea por ticket)', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+      });
+      const lines = Array.from({ length: 10 }, (_, i) => ({
+        ticketTypeId: 'tt1',
+        ticketTypeName: 'General',
+        unitPrice: 10000,
+        attendeeName: `Asistente ${i + 1}`,
+        sessionTime: '10:00',
+      }));
+      events.quotePublicPurchaseDetailed.mockResolvedValueOnce({
+        eventTitle: 'Coraline',
+        lines,
+        total: 100000,
+      });
+      const svc = build();
+
+      await svc.pay('e1', {
+        ...basePayInput,
+        items: lines.map(() => basePayInput.items[0]),
+      });
+
+      const items = mp.charge.mock.calls[0][0].items;
+      expect(items).toHaveLength(10);
+      expect(items[0]).toEqual({
+        id: 'tt1',
+        title: 'General - Asistente 1 - 01/08/2026 10:00',
+        quantity: 1,
+        unitPrice: 10000,
+      });
+      expect(items[0].description).toBeUndefined();
     });
 
     it('arma el Ticket nro como #dia+mes+hora+correlativo de la jornada', async () => {

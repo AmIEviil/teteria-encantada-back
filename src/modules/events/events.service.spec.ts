@@ -753,9 +753,9 @@ describe('EventsService', () => {
     });
 
     it('exige fecha de publicacion al crear', async () => {
-      await expect(service.create(comingSoonDto() as never)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.create(comingSoonDto() as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('rechaza publicacion posterior al inicio del evento', async () => {
@@ -1289,6 +1289,66 @@ describe('EventsService', () => {
 
       // base 100 + extra de "pollo" (10) = 110
       expect(total).toBe(110);
+    });
+
+    it('quotePublicPurchaseDetailed devuelve una linea por ticket con asistente, hora de jornada y precio final', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          title: 'Coraline',
+          ticketTypes: [
+            buildTicketType({
+              id: 'tt-1',
+              price: 100,
+              ...customizableTemplate(),
+            }),
+            buildTicketType({ id: 'tt-2', name: 'VIP', price: 250 }),
+          ],
+          sessions: [
+            buildSession({ id: 'ss-1', startTime: '10:30:00' }),
+          ] as never,
+        }),
+      );
+
+      const quote = await service.quotePublicPurchaseDetailed('ev-1', [
+        {
+          ticketTypeId: 'tt-1',
+          sessionId: 'ss-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Paz',
+          attendanceDate: new Date('2026-07-02'),
+          menuSelection: {
+            groups: [{ groupKey: 'plato', optionIds: ['pollo'] }],
+          } as never,
+        },
+        {
+          ticketTypeId: 'tt-2',
+          attendeeFirstName: 'Luis',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-02'),
+        },
+      ]);
+
+      expect(quote.eventTitle).toBe('Coraline');
+      expect(quote.lines).toEqual([
+        {
+          ticketTypeId: 'tt-1',
+          ticketTypeName: 'General',
+          unitPrice: 110, // base 100 + extra de menu 10
+          attendeeName: 'Ana Paz',
+          sessionTime: '10:30',
+        },
+        {
+          ticketTypeId: 'tt-2',
+          ticketTypeName: 'VIP',
+          unitPrice: 250,
+          attendeeName: 'Luis Diaz',
+          sessionTime: null, // sin jornada elegida
+        },
+      ]);
+      // El detalle siempre suma el total cobrado.
+      expect(quote.lines.reduce((sum, l) => sum + l.unitPrice, 0)).toBe(
+        quote.total,
+      );
     });
 
     it('suma multiples items de distintos tipos de ticket', async () => {

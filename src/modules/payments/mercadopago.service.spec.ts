@@ -62,6 +62,40 @@ describe('MercadoPagoService', () => {
     expect(create.mock.calls[0][0].requestOptions).toBeUndefined();
   });
 
+  it('charge manda los items como additional_info (snake_case) y los omite si no hay', async () => {
+    create.mockResolvedValue({
+      id: 125,
+      status: 'approved',
+      status_detail: '',
+    });
+    const svc = new MercadoPagoService();
+
+    await svc.charge({
+      amount: 25000,
+      token: 'tok',
+      installments: 1,
+      paymentMethodId: 'visa',
+      payerEmail: 'a@b.cl',
+      description: 'Tickets',
+      items: [{ id: 'tt1', title: 'General', quantity: 2, unitPrice: 10000 }],
+      externalReference: 'purchase-3',
+    });
+    expect(create.mock.calls[0][0].body.additional_info).toEqual({
+      items: [{ id: 'tt1', title: 'General', quantity: 2, unit_price: 10000 }],
+    });
+
+    await svc.charge({
+      amount: 5000,
+      token: 'tok',
+      installments: 1,
+      paymentMethodId: 'visa',
+      payerEmail: 'a@b.cl',
+      description: 'Tickets',
+      externalReference: 'purchase-4',
+    });
+    expect(create.mock.calls[1][0].body.additional_info).toBeUndefined();
+  });
+
   it('getPayment retorna external_reference', async () => {
     get.mockResolvedValue({
       id: 9,

@@ -175,6 +175,23 @@ export interface PublicPurchaseResult {
   total: number;
 }
 
+export interface PublicPurchaseQuoteLine {
+  ticketTypeId: string;
+  ticketTypeName: string;
+  // Precio final del ticket: base + extras de menú de ese ticket concreto.
+  // Dos tickets del mismo tipo pueden diferir si eligieron menús distintos.
+  unitPrice: number;
+  attendeeName: string;
+  // HH:mm de la jornada elegida; null si el evento no tiene jornadas.
+  sessionTime: string | null;
+}
+
+export interface PublicPurchaseQuote {
+  eventTitle: string;
+  lines: PublicPurchaseQuoteLine[];
+  total: number;
+}
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -788,6 +805,21 @@ export class EventsService {
     eventId: string,
     items: PublicPurchaseItemInput[],
   ): Promise<number> {
+    const quote = await this.quotePublicPurchaseDetailed(eventId, items);
+    return quote.total;
+  }
+
+  /**
+   * Igual que quotePublicPurchase pero además devuelve el desglose por ticket
+   * (nombre del tipo y precio final) y el título del evento, para que quien
+   * cobra pueda describir la venta línea por línea sin recalcular precios ni
+   * volver a consultar el evento. La suma de los unitPrice es exactamente el
+   * total.
+   */
+  async quotePublicPurchaseDetailed(
+    eventId: string,
+    items: PublicPurchaseItemInput[],
+  ): Promise<PublicPurchaseQuote> {
     const event = await this.findOne(eventId);
     this.assertEventEnabled(event.status);
     this.assertEventAllowsTickets(event);
@@ -798,6 +830,11 @@ export class EventsService {
       );
     }
 
+    const sessionTimeById = new Map(
+      (event.sessions ?? []).map((s) => [s.id, s.startTime.slice(0, 5)]),
+    );
+
+    const lines: PublicPurchaseQuoteLine[] = [];
     let total = 0;
 
     for (const item of items) {
@@ -812,10 +849,26 @@ export class EventsService {
         ticketType,
         item.menuSelection,
       );
-      total += unitPrice + menu.snapshot.totalExtraPrice;
+      const price =
+        Math.round((unitPrice + menu.snapshot.totalExtraPrice) * 100) / 100;
+      lines.push({
+        ticketTypeId: ticketType.id,
+        ticketTypeName: ticketType.name,
+        unitPrice: price,
+        attendeeName:
+          `${item.attendeeFirstName} ${item.attendeeLastName}`.trim(),
+        sessionTime: item.sessionId
+          ? (sessionTimeById.get(item.sessionId) ?? null)
+          : null,
+      });
+      total += price;
     }
 
-    return Math.round(total * 100) / 100;
+    return {
+      eventTitle: event.title,
+      lines,
+      total: Math.round(total * 100) / 100,
+    };
   }
 
   async createPublicTickets(

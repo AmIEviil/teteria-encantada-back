@@ -9,6 +9,7 @@ import {
 import {
   EventsService,
   PublicPurchaseItemInput,
+  PublicPurchaseQuoteLine,
   PublicPurchaseResult,
 } from '../events/events.service';
 import { MailerService } from '../mailer/mailer.service';
@@ -16,7 +17,7 @@ import {
   TicketsPdfService,
   PdfTicketInput,
 } from '../tickets-pdf/tickets-pdf.service';
-import { MercadoPagoService } from './mercadopago.service';
+import { MercadoPagoService, MpItem } from './mercadopago.service';
 
 export interface PayEventInput {
   buyerEmail: string;
@@ -41,6 +42,10 @@ type PaymentOutcome = 'approved' | 'pending' | 'rejected';
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
+  // Hasta acá, una línea por ticket en el detalle de MP. Más que esto, se
+  // agrupa por tipo y los asistentes se mueven a la description de cada línea.
+  private static readonly MAX_UNGROUPED_MP_ITEMS = 10;
+
   constructor(
     @InjectRepository(EventPurchase)
     private readonly purchaseRepository: Repository<EventPurchase>,
@@ -51,10 +56,11 @@ export class PaymentsService {
   ) {}
 
   async pay(eventId: string, input: PayEventInput): Promise<PayEventResult> {
-    const total = await this.eventsService.quotePublicPurchase(
+    const quote = await this.eventsService.quotePublicPurchaseDetailed(
       eventId,
       input.items,
     );
+    const total = quote.total;
 
     const purchase = await this.purchaseRepository.save(
       this.purchaseRepository.create({
@@ -73,7 +79,12 @@ export class PaymentsService {
       paymentMethodId: input.payment.paymentMethodId,
       issuerId: input.payment.issuerId,
       payerEmail: input.buyerEmail,
-      description: `Tickets evento ${eventId}`,
+      description: this.buildChargeDescription(
+        quote.eventTitle,
+        quote.lines,
+        purchase.itemsSnapshot,
+      ),
+      items: this.buildMpItems(quote.lines, purchase.itemsSnapshot),
       externalReference: purchase.id,
       // Requerido por MP para no duplicar el cobro si esta llamada se
       // reintenta (timeout de red, etc.): mismo externalReference no
@@ -268,6 +279,139 @@ export class PaymentsService {
       // no debe hacer fallar la request ni revertir nada. Se registra y sigue.
       this.logger.error(`Fallo enviando correo de tickets: ${String(err)}`);
     }
+  }
+
+  // Descripción que ve el comercio en el panel de MP (y el comprador en el
+  // resumen del pago). Ej:
+  // "Tickets Coraline - 14/07/2026 - General x2, VIP x1 (3 tickets)".
+  // Las fechas salen del snapshot (ya normalizadas a YYYY-MM-DD: reformatear
+  // no puede desfasarse por zona horaria).
+  // MP corta la descripción a 255 chars: el título y el desglose se recortan
+  // antes para que fecha y cantidad total nunca se pierdan.
+  private buildChargeDescription(
+    eventTitle: string,
+    lines: PublicPurchaseQuoteLine[],
+    items: EventPurchaseItemSnapshot[],
+  ): string {
+    const dates = [
+      ...new Set(items.map((i) => i.attendanceDate).filter((d) => !!d)),
+    ].sort();
+
+    // Varias fechas en una misma compra -> rango. Sin fechas (evento sin
+    // fecha de asistencia) -> se omite el tramo.
+    const datePart =
+      dates.length === 0
+        ? ''
+        : dates.length === 1
+          ? ` - ${this.formatDate(dates[0]!)}`
+          : ` - ${this.formatDate(dates[0]!)} a ${this.formatDate(dates[dates.length - 1]!)}`;
+
+    const byName = new Map<string, number>();
+    for (const line of lines) {
+      byName.set(
+        line.ticketTypeName,
+        (byName.get(line.ticketTypeName) ?? 0) + 1,
+      );
+    }
+    const breakdown = [...byName]
+      .map(([name, qty]) => `${name} x${qty}`)
+      .join(', ')
+      .slice(0, 80);
+
+    const count = `${lines.length} ticket${lines.length === 1 ? '' : 's'}`;
+    return `Tickets ${eventTitle.trim().slice(0, 100)}${datePart} - ${breakdown} (${count})`;
+  }
+
+  // Detalle que MP muestra dentro del pago.
+  //
+  // Hasta MAX_UNGROUPED_MP_ITEMS tickets: una línea por ticket (quantity 1),
+  // con asistente, fecha y hora en el título. Pasado ese umbral el panel de MP
+  // se vuelve una lista ilegible, así que se agrupa por tipo y los asistentes
+  // se mueven a la description de cada línea.
+  //
+  // En ambos modos sum(quantity * unitPrice) === monto cobrado: agrupado o no,
+  // se agrupa por tipo Y precio (dos tickets del mismo tipo con menús distintos
+  // cuestan distinto). Si no cuadrara, MP mostraría un detalle que contradice
+  // el cobro.
+  //
+  // lines y items van emparejados por índice: ambos derivan de input.items en
+  // el mismo orden (quotePublicPurchaseDetailed y toSnapshot los recorren tal
+  // cual).
+  private buildMpItems(
+    lines: PublicPurchaseQuoteLine[],
+    items: EventPurchaseItemSnapshot[],
+  ): MpItem[] {
+    const detailed = lines.map((line, index) => ({
+      line,
+      // Ej: "Ana Pérez - 01/08/2026 10:00" (sin jornada: sólo la fecha).
+      label: [
+        line.attendeeName,
+        this.formatWhen(items[index]?.attendanceDate ?? null, line.sessionTime),
+      ]
+        .filter((part) => !!part)
+        .join(' - '),
+    }));
+
+    if (detailed.length <= PaymentsService.MAX_UNGROUPED_MP_ITEMS) {
+      return detailed.map(({ line, label }) => ({
+        id: line.ticketTypeId,
+        title: this.truncate(
+          [line.ticketTypeName, label].filter((p) => !!p).join(' - '),
+        ),
+        quantity: 1,
+        unitPrice: line.unitPrice,
+      }));
+    }
+
+    const groups = new Map<string, MpItem & { attendees: string[] }>();
+
+    for (const { line, label } of detailed) {
+      const key = `${line.ticketTypeId}|${line.unitPrice}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.quantity += 1;
+        existing.attendees.push(label);
+        continue;
+      }
+      groups.set(key, {
+        id: line.ticketTypeId,
+        title: line.ticketTypeName,
+        quantity: 1,
+        unitPrice: line.unitPrice,
+        attendees: [label],
+      });
+    }
+
+    return [...groups.values()].map(({ attendees, ...item }) => ({
+      ...item,
+      title: this.truncate(item.title),
+      description: this.truncate(attendees.join(', ')),
+    }));
+  }
+
+  // Ej: "01/08/2026 10:00". Sin jornada: "01/08/2026". Sin fecha: "".
+  private formatWhen(
+    attendanceDate: string | null,
+    sessionTime: string | null,
+  ): string {
+    return [
+      attendanceDate ? this.formatDate(attendanceDate) : null,
+      sessionTime,
+    ]
+      .filter((part) => !!part)
+      .join(' ');
+  }
+
+  // MP corta title y description de cada item a 256 chars: cortamos antes y
+  // marcamos el corte, para no mandar un nombre partido a la mitad como si
+  // fuera el nombre completo.
+  private truncate(text: string): string {
+    return text.length <= 256 ? text : `${text.slice(0, 255)}…`;
+  }
+
+  private formatDate(iso: string): string {
+    const [year, month, day] = iso.split('-');
+    return `${day}/${month}/${year}`;
   }
 
   // "#" + día + mes + hora de la jornada + correlativo del ticket en esa

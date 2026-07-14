@@ -123,15 +123,18 @@ export class TicketsPdfService {
     const { width: W, height: H } = page.getSize();
     const size = anchor.size * H;
     const maxWidth = (anchor.maxWidth ?? 1) * W;
-    const lines = this.wrap(this.sanitizeForFont(text, font), font, size, maxWidth);
+    const lines = this.wrap(
+      this.sanitizeForFont(text, font),
+      font,
+      size,
+      maxWidth,
+    );
 
     let y = H - anchor.y * H;
     for (const line of lines) {
       const lineWidth = font.widthOfTextAtSize(line, size);
       const x =
-        anchor.align === 'center'
-          ? anchor.x * W - lineWidth / 2
-          : anchor.x * W;
+        anchor.align === 'center' ? anchor.x * W - lineWidth / 2 : anchor.x * W;
       page.drawText(line, {
         x,
         y,
@@ -189,7 +192,11 @@ export class TicketsPdfService {
         size: 16,
         f: font,
       },
-      { text: t.menuSummary ? `Menú: ${t.menuSummary}` : '', size: 16, f: font },
+      {
+        text: t.menuSummary ? `Menú: ${t.menuSummary}` : '',
+        size: 16,
+        f: font,
+      },
       {
         text: t.ticketNumber ? `Ticket nro: ${t.ticketNumber}` : '',
         size: 16,

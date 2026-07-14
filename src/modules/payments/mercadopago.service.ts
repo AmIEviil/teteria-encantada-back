@@ -1,6 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 
+// Líneas que MP muestra como detalle del pago en el panel del comercio
+// (additional_info.items). La suma de quantity * unitPrice debe dar el monto
+// cobrado.
+export interface MpItem {
+  id: string;
+  title: string;
+  quantity: number;
+  unitPrice: number;
+  description?: string;
+}
+
 export interface MpChargeInput {
   amount: number;
   token: string;
@@ -9,6 +20,7 @@ export interface MpChargeInput {
   issuerId?: string;
   payerEmail: string;
   description: string;
+  items?: MpItem[];
   externalReference: string;
   // MP no dedupea reintentos por external_reference: sin idempotency key un
   // reintento (p.ej. por timeout de red) puede cobrar dos veces.
@@ -44,6 +56,17 @@ export class MercadoPagoService {
         issuer_id: input.issuerId as unknown as number | undefined,
         payer: { email: input.payerEmail },
         external_reference: input.externalReference,
+        additional_info: input.items?.length
+          ? {
+              items: input.items.map((i) => ({
+                id: i.id,
+                title: i.title,
+                quantity: i.quantity,
+                unit_price: i.unitPrice,
+                description: i.description,
+              })),
+            }
+          : undefined,
       },
       requestOptions: input.idempotencyKey
         ? { idempotencyKey: input.idempotencyKey }
