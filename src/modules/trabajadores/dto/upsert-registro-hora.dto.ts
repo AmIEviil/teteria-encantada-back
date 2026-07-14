@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsDateString,
   IsNumber,
   IsOptional,
   IsUUID,
@@ -37,6 +38,10 @@ export class UpsertRegistroHoraDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'La fecha debe tener formato YYYY-MM-DD',
   })
+  @IsDateString(
+    { strict: true },
+    { message: 'La fecha debe ser una fecha calendario válida' },
+  )
   fecha: string;
 
   @Type(() => Number)
