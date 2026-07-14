@@ -5,14 +5,16 @@ import {
   IsOptional,
   IsNumber,
   IsString,
+  Matches,
   MaxLength,
   Min,
 } from 'class-validator';
+import { RUT_MESSAGE, RUT_REGEX } from '../constants/rut.constant';
 
 export class UpdateTrabajadorDto {
   @IsOptional()
   @IsString()
-  @MaxLength(20)
+  @Matches(RUT_REGEX, { message: RUT_MESSAGE })
   rut?: string;
 
   @IsOptional()

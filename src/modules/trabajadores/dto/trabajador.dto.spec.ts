@@ -10,7 +10,7 @@ describe('Trabajador DTOs', () => {
   it('CreateTrabajadorDto valido', async () => {
     const dto = plainToInstance(CreateTrabajadorDto, {
       userId: uuid,
-      rut: '11.111.111-1',
+      rut: '202800074-2',
       comuna: 'Santiago',
       direccion: 'calle 1',
       telefono: '123456',
@@ -22,16 +22,36 @@ describe('Trabajador DTOs', () => {
     expect(await validate(dto)).toHaveLength(0);
   });
 
+  it('CreateTrabajadorDto solo exige rut y telefono', async () => {
+    const dto = plainToInstance(CreateTrabajadorDto, {
+      userId: uuid,
+      rut: '11111111-K',
+      telefono: '+56 9 1111 1111',
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('CreateTrabajadorDto rechaza rut con puntos o verificador invalido', async () => {
+    const conPuntos = plainToInstance(CreateTrabajadorDto, {
+      userId: uuid,
+      rut: '11.111.111-1',
+      telefono: '123456',
+    });
+    expect((await validate(conPuntos)).length).toBeGreaterThan(0);
+
+    const verificadorInvalido = plainToInstance(CreateTrabajadorDto, {
+      userId: uuid,
+      rut: '11111111-X',
+      telefono: '123456',
+    });
+    expect((await validate(verificadorInvalido)).length).toBeGreaterThan(0);
+  });
+
   it('CreateTrabajadorDto rechaza userId invalido', async () => {
     const dto = plainToInstance(CreateTrabajadorDto, {
       userId: 'no',
-      rut: 'x',
-      comuna: 'x',
-      direccion: 'x',
+      rut: '202800074-2',
       telefono: 'x',
-      fechaNacimiento: '1990-01-01',
-      edad: 34,
-      sueldo: 5,
     });
     expect((await validate(dto)).length).toBeGreaterThan(0);
   });

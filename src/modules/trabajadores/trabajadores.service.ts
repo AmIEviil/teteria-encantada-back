@@ -20,12 +20,12 @@ export interface PublicTrabajador {
   id: string;
   userId: string;
   rut: string;
-  comuna: string;
-  direccion: string;
   telefono: string;
-  fechaNacimiento: string;
-  edad: number;
-  sueldo: number;
+  comuna: string | null;
+  direccion: string | null;
+  fechaNacimiento: string | null;
+  edad: number | null;
+  sueldo: number | null;
   fotoUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -179,12 +179,12 @@ export class TrabajadoresService {
     const trabajador = this.trabajadorRepository.create({
       userId: createTrabajadorDto.userId,
       rut: createTrabajadorDto.rut.trim(),
-      comuna: createTrabajadorDto.comuna.trim(),
-      direccion: createTrabajadorDto.direccion.trim(),
       telefono: createTrabajadorDto.telefono.trim(),
-      fechaNacimiento: createTrabajadorDto.fechaNacimiento,
-      edad: createTrabajadorDto.edad,
-      sueldo: createTrabajadorDto.sueldo,
+      comuna: createTrabajadorDto.comuna?.trim() || null,
+      direccion: createTrabajadorDto.direccion?.trim() || null,
+      fechaNacimiento: createTrabajadorDto.fechaNacimiento ?? null,
+      edad: createTrabajadorDto.edad ?? null,
+      sueldo: createTrabajadorDto.sueldo ?? null,
       fotoUrl: createTrabajadorDto.fotoUrl?.trim() || null,
     });
 
@@ -372,12 +372,12 @@ export class TrabajadoresService {
       id: trabajador.id,
       userId: trabajador.userId,
       rut: trabajador.rut,
+      telefono: trabajador.telefono,
       comuna: trabajador.comuna,
       direccion: trabajador.direccion,
-      telefono: trabajador.telefono,
       fechaNacimiento: trabajador.fechaNacimiento,
       edad: trabajador.edad,
-      sueldo: Number(trabajador.sueldo),
+      sueldo: trabajador.sueldo === null ? null : Number(trabajador.sueldo),
       fotoUrl: trabajador.fotoUrl,
       createdAt: trabajador.createdAt,
       updatedAt: trabajador.updatedAt,
