@@ -26,8 +26,8 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import type { Response } from 'express';
 import { GoogleProfileResult } from './strategies/google.strategy';
-// import { Roles } from './decorators/roles.decorator';
-// import { SYSTEM_ROLES } from './constants/system-roles.constant';
+import { Roles } from './decorators/roles.decorator';
+import { SYSTEM_ROLES } from './constants/system-roles.constant';
 
 interface RequestWithUser extends Request {
   user: AuthUser;
@@ -37,7 +37,7 @@ interface RequestWithUser extends Request {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Public()
+  @Roles(SYSTEM_ROLES.SUPERADMIN)
   @Post('register')
   register(@Body() registerDto: RegisterDto): Promise<AuthResponse> {
     return this.authService.register(registerDto);
@@ -76,8 +76,7 @@ export class AuthController {
     return this.authService.getRoles();
   }
 
-  // @Roles(SYSTEM_ROLES.SUPERADMIN, SYSTEM_ROLES.ADMIN)
-  @Public() // Temporalmente público para permitir la creación de usuarios sin autenticación
+  @Roles(SYSTEM_ROLES.SUPERADMIN)
   @Post('users')
   createUser(@Body() createUserDto: CreateUserDto): Promise<PublicUser> {
     return this.authService.createUser(createUserDto);

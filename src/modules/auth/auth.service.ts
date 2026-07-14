@@ -73,8 +73,10 @@ export class AuthService implements OnModuleInit {
   }
 
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
-    const roleName = registerDto.roleName ?? SYSTEM_ROLES.TECNICO;
-    const user = await this.createAndPersistUser(registerDto, roleName);
+    const user = await this.createAndPersistUser(
+      registerDto,
+      SYSTEM_ROLES.TECNICO,
+    );
     return this.buildAuthResponse(user);
   }
 

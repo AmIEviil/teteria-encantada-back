@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { In, Repository } from 'typeorm';
 import { SYSTEM_ROLES } from '../auth/constants/system-roles.constant';
 import { AuthProvider, User } from '../auth/entities/user.entity';
 import { Role } from '../auth/entities/role.entity';
+import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { AddWhitelistDto } from './dto/add-whitelist.dto';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { FindEmpleadoUsersDto } from './dto/find-empleado-users.dto';
@@ -244,7 +246,10 @@ export class TrabajadoresService {
     return this.toPublicTrabajador(savedTrabajador);
   }
 
-  async addToWhitelist(dto: AddWhitelistDto): Promise<PublicEmpleadoUser> {
+  async addToWhitelist(
+    authUser: AuthUser,
+    dto: AddWhitelistDto,
+  ): Promise<PublicEmpleadoUser> {
     const email = dto.email.trim().toLowerCase();
 
     const existing = await this.userRepository.findOneBy({ email });
@@ -263,6 +268,15 @@ export class TrabajadoresService {
     if (!role?.isActive) {
       throw new NotFoundException(
         `El rol ${dto.roleName} no existe o no está activo`,
+      );
+    }
+
+    if (
+      role.name === SYSTEM_ROLES.SUPERADMIN &&
+      authUser.role !== SYSTEM_ROLES.SUPERADMIN
+    ) {
+      throw new ForbiddenException(
+        'Solo un Superadmin puede otorgar el rol Superadmin',
       );
     }
 
@@ -287,6 +301,7 @@ export class TrabajadoresService {
   }
 
   async setWhitelistActive(
+    authUser: AuthUser,
     id: string,
     isActive: boolean,
   ): Promise<PublicEmpleadoUser> {
@@ -297,6 +312,19 @@ export class TrabajadoresService {
 
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (
+      user.role.name === SYSTEM_ROLES.SUPERADMIN &&
+      authUser.role !== SYSTEM_ROLES.SUPERADMIN
+    ) {
+      throw new ForbiddenException(
+        'Solo un Superadmin puede modificar a otro Superadmin',
+      );
+    }
+
+    if (id === authUser.userId) {
+      throw new ForbiddenException('No puedes desactivar tu propia cuenta');
     }
 
     user.isActive = isActive;
