@@ -1,10 +1,29 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { TrabajadoresService } from './trabajadores.service';
-import { User } from '../auth/entities/user.entity';
+import { AuthProvider, User } from '../auth/entities/user.entity';
+import { Role } from '../auth/entities/role.entity';
+import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { Trabajador } from './entities/trabajador.entity';
-import { TrabajadorDocumento } from './entities/trabajador-documento.entity';
+
+const adminAuthUser: AuthUser = {
+  userId: 'admin-1',
+  username: 'admin',
+  email: 'admin@teteria.cl',
+  role: 'Admin',
+};
+
+const superadminAuthUser: AuthUser = {
+  userId: 'superadmin-1',
+  username: 'superadmin',
+  email: 'superadmin@teteria.cl',
+  role: 'Superadmin',
+};
 
 type AnyRepo = Record<string, jest.Mock>;
 
@@ -32,7 +51,6 @@ const buildTrabajador = (overrides = {}) => ({
   edad: 34,
   sueldo: 500000,
   fotoUrl: null,
-  documentos: [],
   user: buildUser(),
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -41,9 +59,9 @@ const buildTrabajador = (overrides = {}) => ({
 
 describe('TrabajadoresService', () => {
   let service: TrabajadoresService;
-  let userRepo: AnyRepo;
-  let trabajadorRepo: AnyRepo;
-  let documentoRepo: AnyRepo;
+  let userRepository: AnyRepo;
+  let trabajadorRepository: AnyRepo;
+  let roleRepository: AnyRepo;
   let qb: AnyRepo;
 
   beforeEach(async () => {
@@ -55,28 +73,33 @@ describe('TrabajadoresService', () => {
       take: jest.fn(() => qb),
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
-    userRepo = {
+    userRepository = {
       createQueryBuilder: jest.fn(() => qb),
       findOne: jest.fn(),
+      findOneBy: jest.fn(),
+      create: jest.fn((v) => v),
+      save: jest.fn((v) => Promise.resolve(v)),
     };
-    trabajadorRepo = {
+    trabajadorRepository = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
       findOneBy: jest.fn(),
       create: jest.fn((v) => ({ id: 'tr1', ...v })),
       save: jest.fn((v) => Promise.resolve(v)),
     };
-    documentoRepo = { create: jest.fn((v) => v) };
+    roleRepository = {
+      createQueryBuilder: jest.fn(),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         TrabajadoresService,
-        { provide: getRepositoryToken(User), useValue: userRepo },
-        { provide: getRepositoryToken(Trabajador), useValue: trabajadorRepo },
+        { provide: getRepositoryToken(User), useValue: userRepository },
         {
-          provide: getRepositoryToken(TrabajadorDocumento),
-          useValue: documentoRepo,
+          provide: getRepositoryToken(Trabajador),
+          useValue: trabajadorRepository,
         },
+        { provide: getRepositoryToken(Role), useValue: roleRepository },
       ],
     }).compile();
     service = moduleRef.get(TrabajadoresService);
@@ -85,7 +108,7 @@ describe('TrabajadoresService', () => {
   describe('findUsers', () => {
     it('aplica filtros y mapea trabajador asociado', async () => {
       qb.getManyAndCount.mockResolvedValue([[buildUser()], 1]);
-      trabajadorRepo.find.mockResolvedValue([buildTrabajador()]);
+      trabajadorRepository.find.mockResolvedValue([buildTrabajador()]);
       const result = await service.findUsers({
         page: 1,
         limit: 10,
@@ -100,7 +123,7 @@ describe('TrabajadoresService', () => {
 
     it('usuarios sin trabajador', async () => {
       qb.getManyAndCount.mockResolvedValue([[buildUser()], 1]);
-      trabajadorRepo.find.mockResolvedValue([]);
+      trabajadorRepository.find.mockResolvedValue([]);
       const result = await service.findUsers({} as never);
       expect(result.items[0].trabajador).toBeNull();
     });
@@ -108,8 +131,17 @@ describe('TrabajadoresService', () => {
     it('sin usuarios no consulta trabajadores', async () => {
       qb.getManyAndCount.mockResolvedValue([[], 0]);
       const result = await service.findUsers({} as never);
-      expect(trabajadorRepo.find).not.toHaveBeenCalled();
+      expect(trabajadorRepository.find).not.toHaveBeenCalled();
       expect(result.items).toHaveLength(0);
+    });
+
+    it('onlyStaff excluye el rol Cliente', async () => {
+      qb.getManyAndCount.mockResolvedValue([[], 0]);
+      await service.findUsers({ onlyStaff: true } as never);
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'role.name != :clienteRole',
+        expect.objectContaining({ clienteRole: 'Cliente' }),
+      );
     });
   });
 
@@ -124,47 +156,37 @@ describe('TrabajadoresService', () => {
       edad: 34,
       sueldo: 500000,
       fotoUrl: ' http://f ',
-      documentos: [
-        {
-          nombreArchivo: ' doc ',
-          rutaArchivo: ' /ruta ',
-          tipoMime: ' application/pdf ',
-          tamanoBytes: 100,
-          descripcion: ' desc ',
-        },
-      ],
     };
 
     it('crea trabajador', async () => {
-      userRepo.findOne.mockResolvedValue(buildUser());
-      trabajadorRepo.findOne
+      userRepository.findOne.mockResolvedValue(buildUser());
+      trabajadorRepository.findOne
         .mockResolvedValueOnce(null) // existing trabajador
         .mockResolvedValueOnce(buildTrabajador()); // findOne final
-      trabajadorRepo.findOneBy.mockResolvedValue(null);
+      trabajadorRepository.findOneBy.mockResolvedValue(null);
       const result = await service.create(dto as never);
       expect(result.id).toBe('tr1');
-      expect(documentoRepo.create).toHaveBeenCalled();
     });
 
     it('rechaza usuario inexistente', async () => {
-      userRepo.findOne.mockResolvedValue(null);
+      userRepository.findOne.mockResolvedValue(null);
       await expect(service.create(dto as never)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
     it('rechaza usuario con trabajador existente', async () => {
-      userRepo.findOne.mockResolvedValue(buildUser());
-      trabajadorRepo.findOne.mockResolvedValue(buildTrabajador());
+      userRepository.findOne.mockResolvedValue(buildUser());
+      trabajadorRepository.findOne.mockResolvedValue(buildTrabajador());
       await expect(service.create(dto as never)).rejects.toBeInstanceOf(
         ConflictException,
       );
     });
 
     it('rechaza RUT duplicado', async () => {
-      userRepo.findOne.mockResolvedValue(buildUser());
-      trabajadorRepo.findOne.mockResolvedValue(null);
-      trabajadorRepo.findOneBy.mockResolvedValue(buildTrabajador());
+      userRepository.findOne.mockResolvedValue(buildUser());
+      trabajadorRepository.findOne.mockResolvedValue(null);
+      trabajadorRepository.findOneBy.mockResolvedValue(buildTrabajador());
       await expect(service.create(dto as never)).rejects.toBeInstanceOf(
         ConflictException,
       );
@@ -173,27 +195,13 @@ describe('TrabajadoresService', () => {
 
   describe('findOne', () => {
     it('devuelve trabajador', async () => {
-      trabajadorRepo.findOne.mockResolvedValue(
-        buildTrabajador({
-          documentos: [
-            {
-              id: 'd1',
-              nombreArchivo: 'a',
-              rutaArchivo: '/a',
-              tipoMime: null,
-              tamanoBytes: null,
-              descripcion: null,
-              createdAt: new Date(),
-            },
-          ],
-        }),
-      );
+      trabajadorRepository.findOne.mockResolvedValue(buildTrabajador());
       const result = await service.findOne('tr1');
-      expect(result.documentos).toHaveLength(1);
+      expect(result.id).toBe('tr1');
     });
 
     it('lanza NotFound', async () => {
-      trabajadorRepo.findOne.mockResolvedValue(null);
+      trabajadorRepository.findOne.mockResolvedValue(null);
       await expect(service.findOne('x')).rejects.toBeInstanceOf(
         NotFoundException,
       );
@@ -202,14 +210,14 @@ describe('TrabajadoresService', () => {
 
   describe('update', () => {
     it('lanza NotFound', async () => {
-      trabajadorRepo.findOne.mockResolvedValue(null);
+      trabajadorRepository.findOne.mockResolvedValue(null);
       await expect(service.update('x', {} as never)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
     it('rechaza RUT en uso por otro', async () => {
-      trabajadorRepo.findOne
+      trabajadorRepository.findOne
         .mockResolvedValueOnce(buildTrabajador({ id: 'tr1' }))
         .mockResolvedValueOnce(buildTrabajador({ id: 'tr2' }));
       await expect(
@@ -217,18 +225,231 @@ describe('TrabajadoresService', () => {
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('actualiza con documentos', async () => {
-      trabajadorRepo.findOne
+    it('actualiza datos del trabajador', async () => {
+      trabajadorRepository.findOne
         .mockResolvedValueOnce(buildTrabajador({ id: 'tr1' }))
         .mockResolvedValueOnce(null); // rut check (no conflict)
       const result = await service.update('tr1', {
         rut: '11.111.111-1',
         comuna: 'Maipu',
         sueldo: 600000,
-        documentos: [{ nombreArchivo: 'd', rutaArchivo: '/d' }],
       } as never);
-      expect(documentoRepo.create).toHaveBeenCalled();
       expect(result.id).toBe('tr1');
+      expect(result.comuna).toBe('Maipu');
+    });
+  });
+
+  describe('normalizacion de campos opcionales', () => {
+    const baseDto = {
+      userId: 'u1',
+      rut: '11.111.111-1',
+      comuna: 'Santiago',
+      direccion: 'calle 1',
+      telefono: '123',
+      fechaNacimiento: '1990-01-01',
+      edad: 34,
+      sueldo: 500000,
+    };
+
+    it('create deja fotoUrl en null cuando llega vacia', async () => {
+      trabajadorRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildTrabajador());
+      userRepository.findOne.mockResolvedValue(buildUser());
+
+      await service.create({ ...baseDto, fotoUrl: '   ' } as never);
+
+      const created = trabajadorRepository.create.mock.calls[0][0] as {
+        fotoUrl: string | null;
+      };
+      expect(created.fotoUrl).toBeNull();
+    });
+
+    it('update sin campos conserva los valores actuales', async () => {
+      const existing = buildTrabajador();
+      trabajadorRepository.findOne.mockResolvedValueOnce(existing);
+      trabajadorRepository.save.mockImplementation((t: unknown) =>
+        Promise.resolve(t),
+      );
+
+      const result = await service.update('tr1', {} as never);
+
+      expect(result.rut).toBe('11.111.111-1');
+      expect(result.comuna).toBe('Santiago');
+      expect(result.sueldo).toBe(500000);
+    });
+  });
+
+  describe('whitelist', () => {
+    const rolTecnico = { id: 'role-1', name: 'Tecnico', isActive: true };
+
+    const mockRoleQueryBuilder = () => ({
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(rolTecnico),
+    });
+
+    it('crea un usuario sin password a partir del correo y el rol', async () => {
+      userRepository.findOneBy.mockResolvedValue(null);
+      roleRepository.createQueryBuilder.mockReturnValue(mockRoleQueryBuilder());
+      userRepository.create.mockImplementation((data) => data);
+      userRepository.save.mockImplementation((data) =>
+        Promise.resolve({
+          ...data,
+          id: 'user-1',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
+
+      const result = await service.addToWhitelist(adminAuthUser, {
+        email: '  Pedro@Teteria.CL ',
+        roleName: 'Tecnico',
+      });
+
+      const saved = userRepository.save.mock.calls[0][0];
+      expect(saved.email).toBe('pedro@teteria.cl');
+      expect(saved.username).toBeNull();
+      expect(saved.passwordHash).toBeNull();
+      expect(saved.provider).toBe(AuthProvider.GOOGLE);
+      expect(saved.first_name).toBe('pedro');
+      expect(saved.isActive).toBe(true);
+      expect(result.email).toBe('pedro@teteria.cl');
+    });
+
+    it('rechaza un correo que ya existe', async () => {
+      userRepository.findOneBy.mockResolvedValue({ id: 'user-9' });
+
+      await expect(
+        service.addToWhitelist(adminAuthUser, {
+          email: 'pedro@teteria.cl',
+          roleName: 'Tecnico',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rechaza un rol inexistente', async () => {
+      userRepository.findOneBy.mockResolvedValue(null);
+      roleRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.addToWhitelist(adminAuthUser, {
+          email: 'pedro@teteria.cl',
+          roleName: 'Fantasma',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('un Admin no puede otorgar el rol Superadmin', async () => {
+      userRepository.findOneBy.mockResolvedValue(null);
+      roleRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({
+          id: 'role-super',
+          name: 'Superadmin',
+          isActive: true,
+        }),
+      });
+
+      await expect(
+        service.addToWhitelist(adminAuthUser, {
+          email: 'pedro@teteria.cl',
+          roleName: 'Superadmin',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('un Superadmin puede otorgar el rol Superadmin', async () => {
+      userRepository.findOneBy.mockResolvedValue(null);
+      roleRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({
+          id: 'role-super',
+          name: 'Superadmin',
+          isActive: true,
+        }),
+      });
+      userRepository.create.mockImplementation((data) => data);
+      userRepository.save.mockImplementation((data) =>
+        Promise.resolve({
+          ...data,
+          id: 'user-1',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
+
+      const result = await service.addToWhitelist(superadminAuthUser, {
+        email: 'pedro@teteria.cl',
+        roleName: 'Superadmin',
+      });
+
+      expect(result.role.name).toBe('Superadmin');
+    });
+
+    it('desactivar deja al usuario inactivo', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-1',
+        email: 'pedro@teteria.cl',
+        username: null,
+        first_name: 'pedro',
+        last_name: null,
+        isActive: true,
+        role: rolTecnico,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      userRepository.save.mockImplementation((data) => Promise.resolve(data));
+      trabajadorRepository.findOneBy.mockResolvedValue(null);
+
+      const result = await service.setWhitelistActive(
+        adminAuthUser,
+        'user-1',
+        false,
+      );
+
+      expect(result.isActive).toBe(false);
+      expect(userRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ isActive: false }),
+      );
+    });
+
+    it('un Admin no puede desactivar a un Superadmin', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-super',
+        email: 'jefe@teteria.cl',
+        username: null,
+        first_name: 'jefe',
+        last_name: null,
+        isActive: true,
+        role: { id: 'role-super', name: 'Superadmin', isActive: true },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await expect(
+        service.setWhitelistActive(adminAuthUser, 'user-super', false),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('un usuario no puede desactivar su propia cuenta', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'admin-1',
+        email: 'admin@teteria.cl',
+        username: null,
+        first_name: 'admin',
+        last_name: null,
+        isActive: true,
+        role: { id: 'role-admin', name: 'Admin', isActive: true },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await expect(
+        service.setWhitelistActive(adminAuthUser, 'admin-1', false),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

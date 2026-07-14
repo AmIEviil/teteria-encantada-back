@@ -15,6 +15,7 @@ export enum EventStatus {
   CANCELLED = 'CANCELLED',
   SUSPENDED = 'SUSPENDED',
   RESCHEDULED = 'RESCHEDULED',
+  COMING_SOON = 'COMING_SOON',
 }
 
 @Entity('events')
@@ -43,6 +44,10 @@ export class Event {
     default: EventStatus.ENABLED,
   })
   status!: EventStatus;
+
+  // Solo para COMING_SOON: momento en que el evento pasa a ENABLED (publicacion automatica).
+  @Column({ type: 'timestamptz', nullable: true })
+  publishAt!: Date | null;
 
   @Column({ type: 'int', default: 0 })
   totalTickets!: number;

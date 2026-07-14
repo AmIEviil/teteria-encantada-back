@@ -3,15 +3,14 @@ import { validate } from 'class-validator';
 import { CreateTrabajadorDto } from './create-trabajador.dto';
 import { UpdateTrabajadorDto } from './update-trabajador.dto';
 import { FindEmpleadoUsersDto } from './find-empleado-users.dto';
-import { CreateTrabajadorDocumentoDto } from './create-trabajador-documento.dto';
 
 const uuid = '550e8400-e29b-41d4-a716-446655440000';
 
 describe('Trabajador DTOs', () => {
-  it('CreateTrabajadorDto valido con documentos', async () => {
+  it('CreateTrabajadorDto valido', async () => {
     const dto = plainToInstance(CreateTrabajadorDto, {
       userId: uuid,
-      rut: '11.111.111-1',
+      rut: '202800074-2',
       comuna: 'Santiago',
       direccion: 'calle 1',
       telefono: '123456',
@@ -19,29 +18,40 @@ describe('Trabajador DTOs', () => {
       edad: 34,
       sueldo: 500000,
       fotoUrl: 'http://f',
-      documentos: [
-        {
-          nombreArchivo: 'doc',
-          rutaArchivo: '/ruta',
-          tipoMime: 'application/pdf',
-          tamanoBytes: 100,
-          descripcion: 'd',
-        },
-      ],
     });
     expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('CreateTrabajadorDto solo exige rut y telefono', async () => {
+    const dto = plainToInstance(CreateTrabajadorDto, {
+      userId: uuid,
+      rut: '11111111-K',
+      telefono: '+56 9 1111 1111',
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('CreateTrabajadorDto rechaza rut con puntos o verificador invalido', async () => {
+    const conPuntos = plainToInstance(CreateTrabajadorDto, {
+      userId: uuid,
+      rut: '11.111.111-1',
+      telefono: '123456',
+    });
+    expect((await validate(conPuntos)).length).toBeGreaterThan(0);
+
+    const verificadorInvalido = plainToInstance(CreateTrabajadorDto, {
+      userId: uuid,
+      rut: '11111111-X',
+      telefono: '123456',
+    });
+    expect((await validate(verificadorInvalido)).length).toBeGreaterThan(0);
   });
 
   it('CreateTrabajadorDto rechaza userId invalido', async () => {
     const dto = plainToInstance(CreateTrabajadorDto, {
       userId: 'no',
-      rut: 'x',
-      comuna: 'x',
-      direccion: 'x',
+      rut: '202800074-2',
       telefono: 'x',
-      fechaNacimiento: '1990-01-01',
-      edad: 34,
-      sueldo: 5,
     });
     expect((await validate(dto)).length).toBeGreaterThan(0);
   });
@@ -50,7 +60,6 @@ describe('Trabajador DTOs', () => {
     const dto = plainToInstance(UpdateTrabajadorDto, {
       comuna: 'Maipu',
       sueldo: 600000,
-      documentos: [{ nombreArchivo: 'd', rutaArchivo: '/d' }],
     });
     expect(await validate(dto)).toHaveLength(0);
   });
@@ -67,14 +76,5 @@ describe('Trabajador DTOs', () => {
   it('FindEmpleadoUsersDto rechaza limit > 100', async () => {
     const dto = plainToInstance(FindEmpleadoUsersDto, { limit: 999 });
     expect((await validate(dto)).length).toBeGreaterThan(0);
-  });
-
-  it('CreateTrabajadorDocumentoDto valido', async () => {
-    const dto = plainToInstance(CreateTrabajadorDocumentoDto, {
-      nombreArchivo: 'doc',
-      rutaArchivo: '/ruta',
-      tamanoBytes: 50,
-    });
-    expect(await validate(dto)).toHaveLength(0);
   });
 });

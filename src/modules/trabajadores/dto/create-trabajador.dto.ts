@@ -1,58 +1,56 @@
 import { Type } from 'class-transformer';
 import {
-  IsArray,
   IsDateString,
   IsInt,
   IsOptional,
   IsNumber,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Min,
-  ValidateNested,
 } from 'class-validator';
-import { CreateTrabajadorDocumentoDto } from './create-trabajador-documento.dto';
+import { RUT_MESSAGE, RUT_REGEX } from '../constants/rut.constant';
 
 export class CreateTrabajadorDto {
   @IsUUID()
   userId: string;
 
   @IsString()
-  @MaxLength(20)
+  @Matches(RUT_REGEX, { message: RUT_MESSAGE })
   rut: string;
-
-  @IsString()
-  @MaxLength(80)
-  comuna: string;
-
-  @IsString()
-  @MaxLength(120)
-  direccion: string;
 
   @IsString()
   @MaxLength(20)
   telefono: string;
 
-  @IsDateString()
-  fechaNacimiento: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  comuna?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  direccion?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaNacimiento?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(0)
-  edad: number;
+  edad?: number;
 
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  sueldo: number;
+  sueldo?: number;
 
   @IsOptional()
   @IsString()
   @MaxLength(255)
   fotoUrl?: string;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateTrabajadorDocumentoDto)
-  documentos?: CreateTrabajadorDocumentoDto[];
 }

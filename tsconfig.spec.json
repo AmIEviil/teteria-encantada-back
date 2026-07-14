@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // ts-jest usa transpileModule cuando isolatedModules=true: sin type-checker,
+    // emitDecoratorMetadata genera guardas `typeof X !== "undefined" ? _a : Object`
+    // que istanbul cuenta como ramas imposibles de cubrir (~500 ramas fantasma).
+    "isolatedModules": false,
+    // isolatedModules=false exige un module kind no híbrido; jest corre en CJS.
+    "module": "commonjs",
+    "moduleResolution": "node"
+  }
+}

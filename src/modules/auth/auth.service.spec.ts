@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
-import { User } from './entities/user.entity';
+import { AuthProvider, User } from './entities/user.entity';
 import { Role } from './entities/role.entity';
 
 jest.mock('bcrypt', () => ({
@@ -314,6 +314,42 @@ describe('AuthService', () => {
         }),
       );
       expect(result.user.role.name).toBe('Cliente');
+    });
+
+    it('reemplaza el nombre placeholder con el perfil real en el primer login', async () => {
+      const whitelisted = {
+        id: 'user-1',
+        email: 'pedro@teteria.cl',
+        username: null,
+        first_name: 'pedro',
+        last_name: null,
+        googleId: null,
+        provider: AuthProvider.GOOGLE,
+        isActive: true,
+        role: { id: 'role-1', name: 'Tecnico' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      userRepo.findOneBy.mockResolvedValueOnce(whitelisted);
+      userRepo.save.mockImplementation((data) => Promise.resolve(data));
+
+      const result = await service.googleLogin({
+        googleId: 'g-123',
+        email: 'pedro@teteria.cl',
+        firstName: 'Pedro',
+        lastName: 'Soto',
+      });
+
+      expect(userRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          googleId: 'g-123',
+          first_name: 'Pedro',
+          last_name: 'Soto',
+        }),
+      );
+      expect(result.user.first_name).toBe('Pedro');
+      expect(userRepo.create).not.toHaveBeenCalled();
     });
   });
 

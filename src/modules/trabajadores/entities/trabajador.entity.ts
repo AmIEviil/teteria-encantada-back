@@ -3,14 +3,12 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
-  OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { numericTransformer } from '../../../common/db/numeric.transformer';
 import { User } from '../../auth/entities/user.entity';
-import { TrabajadorDocumento } from './trabajador-documento.entity';
 
 @Entity('trabajadores')
 export class Trabajador {
@@ -27,38 +25,33 @@ export class Trabajador {
   @Column({ type: 'varchar', length: 20, unique: true })
   rut: string;
 
-  @Column({ type: 'varchar', length: 80 })
-  comuna: string;
-
-  @Column({ type: 'varchar', length: 120 })
-  direccion: string;
-
   @Column({ type: 'varchar', length: 20 })
   telefono: string;
 
-  @Column({ name: 'fecha_nacimiento', type: 'date' })
-  fechaNacimiento: string;
+  // Solo rut y telefono son obligatorios para dar de alta un trabajador.
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  comuna: string | null;
 
-  @Column({ type: 'int' })
-  edad: number;
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  direccion: string | null;
+
+  @Column({ name: 'fecha_nacimiento', type: 'date', nullable: true })
+  fechaNacimiento: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  edad: number | null;
 
   @Column({
     type: 'numeric',
     precision: 14,
     scale: 2,
+    nullable: true,
     transformer: numericTransformer,
   })
-  sueldo: number;
+  sueldo: number | null;
 
   @Column({ name: 'foto_url', type: 'varchar', length: 255, nullable: true })
   fotoUrl: string | null;
-
-  @OneToMany(() => TrabajadorDocumento, (documento) => documento.trabajador, {
-    cascade: true,
-    eager: true,
-    orphanedRowAction: 'delete',
-  })
-  documentos: TrabajadorDocumento[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

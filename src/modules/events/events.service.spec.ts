@@ -742,6 +742,72 @@ describe('EventsService', () => {
     });
   });
 
+  describe('proximamente', () => {
+    const comingSoonDto = (publishAt?: Date) => ({
+      title: 'Proximo',
+      startsAt: START,
+      endsAt: END,
+      status: EventStatus.COMING_SOON,
+      publishAt,
+      ticketTypes: [makeTicketTypeDto()],
+    });
+
+    it('exige fecha de publicacion al crear', async () => {
+      await expect(service.create(comingSoonDto() as never)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rechaza publicacion posterior al inicio del evento', async () => {
+      await expect(
+        service.create(
+          comingSoonDto(new Date('2026-07-02T20:00:00Z')) as never,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('guarda publishAt cuando es valido', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ status: EventStatus.COMING_SOON }),
+      );
+
+      await service.create(
+        comingSoonDto(new Date('2026-06-20T10:00:00Z')) as never,
+      );
+
+      expect(txEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: EventStatus.COMING_SOON,
+          publishAt: new Date('2026-06-20T10:00:00Z'),
+        }),
+      );
+    });
+
+    it('limpia publishAt en estados distintos de COMING_SOON', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          status: EventStatus.COMING_SOON,
+          publishAt: new Date('2026-06-20T10:00:00Z'),
+        }),
+      );
+
+      const result = await service.updateStatus('ev-1', {
+        status: EventStatus.ENABLED,
+      } as never);
+
+      expect(result.publishAt).toBeNull();
+    });
+
+    it('el cron habilita los eventos cuya publicacion ya vencio', async () => {
+      await service.publishScheduledEvents();
+
+      expect(eventRepo.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: EventStatus.COMING_SOON }),
+        { status: EventStatus.ENABLED, publishAt: null },
+      );
+    });
+  });
+
   describe('remove', () => {
     it('elimina evento sin tickets', async () => {
       eventRepo.findOne.mockResolvedValue(buildEvent());
@@ -1529,6 +1595,623 @@ describe('EventsService', () => {
       });
       await service.removeTicket('ev-1', 'tk-1');
       expect(eventRepo.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('validacion de jornadas al crear', () => {
+    const createWithSessions = (
+      sessions: unknown[],
+      extra: Record<string, unknown> = {},
+    ) =>
+      service.create({
+        title: 'Jornadas',
+        startsAt: START,
+        endsAt: END,
+        hasSessions: true,
+        ticketTypes: [makeTicketTypeDto()],
+        sessions,
+        ...extra,
+      } as never);
+
+    it('rechaza entrada liberada con jornadas', async () => {
+      await expect(
+        service.create({
+          title: 'X',
+          startsAt: START,
+          endsAt: END,
+          hasSessions: true,
+          isFreeEntry: true,
+          sessions: [{ date: START, startTime: '12:00', capacity: 5 }],
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza hasSessions sin jornadas', async () => {
+      await expect(createWithSessions([])).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rechaza jornadas cuando el evento no las usa', async () => {
+      await expect(
+        service.create({
+          title: 'X',
+          startsAt: START,
+          endsAt: END,
+          hasSessions: false,
+          ticketTypes: [makeTicketTypeDto()],
+          sessions: [{ date: START, startTime: '12:00', capacity: 5 }],
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza jornada con hora de termino menor o igual al inicio', async () => {
+      await expect(
+        createWithSessions([
+          {
+            date: new Date('2026-07-01'),
+            startTime: '12:00',
+            endTime: '12:00',
+            capacity: 5,
+          },
+        ]),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza jornada que repite cupos del mismo tipo de ticket', async () => {
+      await expect(
+        createWithSessions([
+          {
+            date: new Date('2026-07-01'),
+            startTime: '12:00',
+            capacity: 5,
+            allocations: [
+              { ticketTypeIndex: 0, quantity: 1 },
+              { ticketTypeIndex: 0, quantity: 1 },
+            ],
+          },
+        ]),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('validacion de plantillas de menu', () => {
+    const createWithTemplate = (menuTemplate: unknown) =>
+      service.create({
+        title: 'Menu',
+        startsAt: START,
+        endsAt: END,
+        ticketTypes: [
+          makeTicketTypeDto({
+            menuMode: EventTicketMenuMode.CUSTOMIZABLE,
+            menuTemplate,
+          }),
+        ],
+      } as never);
+
+    const group = (overrides: Record<string, unknown> = {}) => ({
+      key: 'plato',
+      label: 'Plato',
+      options: [
+        { id: 'carne', label: 'Carne', extraPrice: 0 },
+        { id: 'pollo', label: 'Pollo', extraPrice: 10 },
+      ],
+      ...overrides,
+    });
+
+    it('rechaza plantilla sin grupos', async () => {
+      await expect(createWithTemplate({ groups: [] })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rechaza grupos con clave duplicada', async () => {
+      await expect(
+        createWithTemplate({ groups: [group(), group({ label: 'Plato 2' })] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza grupo sin clave o nombre', async () => {
+      await expect(
+        createWithTemplate({ groups: [group({ key: '  ' })] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza grupo sin opciones', async () => {
+      await expect(
+        createWithTemplate({ groups: [group({ options: [] })] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza opcion sin id o nombre', async () => {
+      await expect(
+        createWithTemplate({
+          groups: [group({ options: [{ id: 'carne', label: ' ' }] })],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza opciones repetidas', async () => {
+      await expect(
+        createWithTemplate({
+          groups: [
+            group({
+              options: [
+                { id: 'carne', label: 'Carne' },
+                { id: 'CARNE', label: 'Carne otra vez' },
+              ],
+            }),
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza recargo negativo', async () => {
+      await expect(
+        createWithTemplate({
+          groups: [
+            group({
+              options: [{ id: 'carne', label: 'Carne', extraPrice: -5 }],
+            }),
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza grupo sin opciones activas', async () => {
+      await expect(
+        createWithTemplate({
+          groups: [
+            group({
+              options: [
+                { id: 'carne', label: 'Carne', isActive: false },
+                { id: 'pollo', label: 'Pollo', isActive: false },
+              ],
+            }),
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza minSelect invalido', async () => {
+      await expect(
+        createWithTemplate({ groups: [group({ minSelect: -1 })] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza maxSelect invalido', async () => {
+      await expect(
+        createWithTemplate({ groups: [group({ maxSelect: 0 })] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza minSelect mayor que maxSelect', async () => {
+      await expect(
+        createWithTemplate({
+          groups: [group({ minSelect: 2, maxSelect: 1 })],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza minSelect mayor a las opciones activas', async () => {
+      await expect(
+        createWithTemplate({
+          groups: [
+            group({
+              minSelect: 2,
+              maxSelect: 2,
+              options: [
+                { id: 'carne', label: 'Carne' },
+                { id: 'pollo', label: 'Pollo', isActive: false },
+              ],
+            }),
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza maxSelect mayor a las opciones activas', async () => {
+      await expect(
+        createWithTemplate({ groups: [group({ maxSelect: 3 })] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('acepta grupo opcional (required=false) con minSelect implicito 0', async () => {
+      eventRepo.findOne.mockResolvedValue(buildEvent());
+      await createWithTemplate({ groups: [group({ required: false })] });
+      expect(txTicketType.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('seleccion de menu al emitir ticket', () => {
+    const menuTicketType = () =>
+      buildTicketType({
+        menuMode: EventTicketMenuMode.CUSTOMIZABLE,
+        menuTemplate: {
+          groups: [
+            {
+              key: 'plato',
+              label: 'Plato',
+              required: true,
+              minSelect: 1,
+              maxSelect: 1,
+              options: [
+                { id: 'carne', label: 'Carne', extraPrice: 0, isActive: true },
+                { id: 'pollo', label: 'Pollo', extraPrice: 10, isActive: true },
+                {
+                  id: 'vegano',
+                  label: 'Vegano',
+                  extraPrice: 5,
+                  isActive: false,
+                },
+              ],
+            },
+          ],
+        },
+      } as never);
+
+    const createTicketWithSelection = (menuSelection?: unknown) => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [menuTicketType()] }),
+      );
+      return service.createTicket('ev-1', {
+        ticketTypeId: 'tt-1',
+        attendeeFirstName: 'Ana',
+        attendeeLastName: 'Diaz',
+        attendanceDate: new Date('2026-07-01'),
+        menuSelection,
+      } as never);
+    };
+
+    it('exige seleccion en tickets con menu personalizable', async () => {
+      await expect(createTicketWithSelection()).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rechaza seleccion con formato invalido', async () => {
+      await expect(
+        createTicketWithSelection({ groups: 'nope' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza grupos duplicados en la seleccion', async () => {
+      await expect(
+        createTicketWithSelection({
+          groups: [
+            { groupKey: 'plato', optionIds: ['carne'] },
+            { groupKey: 'PLATO', optionIds: ['pollo'] },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza grupo sin clave', async () => {
+      await expect(
+        createTicketWithSelection({ groups: [{ optionIds: ['carne'] }] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza grupo sin lista de opciones', async () => {
+      await expect(
+        createTicketWithSelection({ groups: [{ groupKey: 'plato' }] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza grupo que no existe en la plantilla', async () => {
+      await expect(
+        createTicketWithSelection({
+          groups: [{ groupKey: 'postre', optionIds: ['flan'] }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza seleccion bajo el minimo', async () => {
+      await expect(
+        createTicketWithSelection({
+          groups: [{ groupKey: 'plato', optionIds: [] }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza seleccion sobre el maximo', async () => {
+      await expect(
+        createTicketWithSelection({
+          groups: [{ groupKey: 'plato', optionIds: ['carne', 'pollo'] }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza opcion inactiva o inexistente', async () => {
+      await expect(
+        createTicketWithSelection({
+          groups: [{ groupKey: 'plato', optionIds: ['vegano'] }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('deduplica optionIds repetidos y suma el recargo una vez', async () => {
+      const [ticket] = await createTicketWithSelection({
+        groups: [{ groupKey: 'plato', optionIds: ['pollo', 'POLLO'] }],
+      });
+      expect(ticket.menuExtraPrice).toBe(10);
+      expect(ticket.price).toBe(110);
+      expect(ticket.includesDetails).toBe('Plato: Pollo');
+    });
+
+    it('rechaza seleccion de menu en ticket de menu fijo', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+      await expect(
+        service.createTicket('ev-1', {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-01'),
+          menuSelection: {
+            groups: [{ groupKey: 'plato', optionIds: ['carne'] }],
+          },
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('cupos al emitir tickets', () => {
+    const emit = (
+      ticketType: EventTicketType,
+      dto: Record<string, unknown>,
+    ) => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [ticketType] }),
+      );
+      return service.createTicket('ev-1', {
+        ticketTypeId: 'tt-1',
+        attendeeFirstName: 'Ana',
+        attendeeLastName: 'Diaz',
+        attendanceDate: new Date('2026-07-01'),
+        ...dto,
+      } as never);
+    };
+
+    it('exige fecha de asistencia en eventos sin jornadas', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType()] }),
+      );
+      await expect(
+        service.createTicket('ev-1', {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Diaz',
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza fecha sin cupo diario configurado', async () => {
+      await expect(
+        emit(
+          buildTicketType({
+            dailyStocks: [{ date: '2026-07-02', quantity: 5 }] as never,
+          }),
+          {},
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza cuando el cupo diario esta agotado', async () => {
+      ticketQb.getCount.mockResolvedValue(5);
+      await expect(
+        emit(
+          buildTicketType({
+            dailyStocks: [{ date: '2026-07-01', quantity: 5 }] as never,
+          }),
+          {},
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza cuando el cupo total esta agotado', async () => {
+      ticketQb.getCount.mockResolvedValue(50);
+      await expect(
+        emit(buildTicketType({ totalStock: 50 }), {}),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('permite oversell cuando el pago ya fue capturado', async () => {
+      ticketQb.getCount.mockResolvedValue(50);
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ ticketTypes: [buildTicketType({ totalStock: 50 })] }),
+      );
+      const tickets = await service.createTicket(
+        'ev-1',
+        {
+          ticketTypeId: 'tt-1',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Diaz',
+          attendanceDate: new Date('2026-07-01'),
+        } as never,
+        { allowOversell: true, buyerEmail: 'a@b.cl', purchaseId: 'pur-1' },
+      );
+      expect(tickets).toHaveLength(1);
+    });
+
+    it('aplica precio promocional por bloques', async () => {
+      const tickets = await emit(
+        buildTicketType({
+          isPromotional: true,
+          promoMinQuantity: 2,
+          promoBundlePrice: 150,
+        }),
+        { quantity: 3, applyPromotion: true },
+      );
+      expect(tickets.map((ticket) => ticket.price)).toEqual([75, 75, 100]);
+    });
+
+    it('rechaza promocion en ticket no promocional', async () => {
+      await expect(
+        emit(buildTicketType(), { quantity: 2, applyPromotion: true }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza promocion bajo la cantidad minima', async () => {
+      await expect(
+        emit(
+          buildTicketType({
+            isPromotional: true,
+            promoMinQuantity: 3,
+            promoBundlePrice: 150,
+          }),
+          { quantity: 2, applyPromotion: true },
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('cupos por jornada', () => {
+    const sessionEvent = (
+      sessionOverrides: Record<string, unknown> = {},
+      ticketTypeOverrides: Partial<EventTicketType> = {},
+    ) =>
+      buildEvent({
+        hasSessions: true,
+        ticketTypes: [buildTicketType(ticketTypeOverrides)],
+        sessions: [buildSession(sessionOverrides)],
+      } as never);
+
+    const emitForSession = () =>
+      service.createTicket('ev-1', {
+        ticketTypeId: 'tt-1',
+        sessionId: 'ss-1',
+        attendeeFirstName: 'Ana',
+        attendeeLastName: 'Diaz',
+      } as never);
+
+    it('rechaza jornada que no pertenece al evento', async () => {
+      eventRepo.findOne.mockResolvedValue(sessionEvent());
+      await expect(
+        service.createTicket('ev-1', {
+          ticketTypeId: 'tt-1',
+          sessionId: 'ss-x',
+          attendeeFirstName: 'Ana',
+          attendeeLastName: 'Diaz',
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza cuando la jornada esta llena', async () => {
+      eventRepo.findOne.mockResolvedValue(sessionEvent({ capacity: 2 }));
+      ticketQb.getCount.mockResolvedValue(2);
+      await expect(emitForSession()).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rechaza cuando el cupo del tipo en la jornada esta agotado', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        sessionEvent({
+          capacity: 10,
+          allocations: [{ ticketTypeId: 'tt-1', quantity: 1 }],
+        }),
+      );
+      ticketQb.getCount.mockResolvedValue(1);
+      await expect(emitForSession()).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rechaza cuando el cupo total del tipo esta agotado en jornadas', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        sessionEvent({ capacity: 100 }, { totalStock: 3 }),
+      );
+      ticketQb.getCount.mockResolvedValue(3);
+      await expect(emitForSession()).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('getPublicDetail', () => {
+    it('rechaza eventos no habilitados', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({ status: EventStatus.CANCELLED }),
+      );
+      await expect(service.getPublicDetail('ev-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('calcula remanentes por tipo, jornada y evento', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          totalTickets: 40,
+          hasSessions: true,
+          ticketTypes: [
+            buildTicketType({ id: 'tt-1', totalStock: 10 }),
+            buildTicketType({ id: 'tt-2', totalStock: null }),
+          ],
+          sessions: [
+            buildSession({
+              capacity: 8,
+              allocations: [{ ticketTypeId: 'tt-1', quantity: 4 }],
+            }),
+          ],
+        } as never),
+      );
+      ticketQb.getCount.mockResolvedValue(2);
+      ticketRepo.countBy.mockResolvedValue(6);
+
+      const detail = await service.getPublicDetail('ev-1');
+
+      expect(detail.ticketTypes[0].remaining).toBe(8);
+      expect(detail.ticketTypes[1].remaining).toBeNull();
+      expect(detail.ticketTypes[1].available).toBe(true);
+      // tt-1 => min(cap 8-2, alloc 4-2, total 10-2) = 2; tt-2 => cap 8-2 = 6.
+      // El remanente de la jornada es la mejor disponibilidad entre tipos.
+      expect(detail.sessions[0].remaining).toBe(6);
+      expect(detail.sessions[0].seatsRemaining).toBe(6);
+      expect(detail.seatsRemaining).toBe(34);
+    });
+
+    it('remanente de jornada es el mejor entre tipos acotados', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          totalTickets: 0,
+          hasSessions: true,
+          ticketTypes: [buildTicketType({ id: 'tt-1', totalStock: 10 })],
+          sessions: [
+            buildSession({
+              capacity: 8,
+              allocations: [{ ticketTypeId: 'tt-1', quantity: 4 }],
+            }),
+          ],
+        } as never),
+      );
+      ticketQb.getCount.mockResolvedValue(2);
+
+      const detail = await service.getPublicDetail('ev-1');
+
+      // min(capacidad 8-2, allocation 4-2, total 10-2) = 2
+      expect(detail.sessions[0].remaining).toBe(2);
+      expect(detail.seatsRemaining).toBeNull();
+    });
+
+    it('remaining 0 cuando no hay cupo diario para la fecha de inicio', async () => {
+      eventRepo.findOne.mockResolvedValue(
+        buildEvent({
+          totalTickets: 0,
+          ticketTypes: [
+            buildTicketType({
+              totalStock: null,
+              dailyStocks: [{ date: '2026-07-02', quantity: 5 }],
+            } as never),
+          ],
+        }),
+      );
+
+      const detail = await service.getPublicDetail('ev-1');
+
+      expect(detail.ticketTypes[0].remaining).toBe(0);
+      expect(detail.ticketTypes[0].available).toBe(false);
     });
   });
 });

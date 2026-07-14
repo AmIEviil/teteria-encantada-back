@@ -12,15 +12,25 @@ describe('PublicService', () => {
   let service: PublicService;
   let productRepo: Record<string, jest.Mock>;
   let tableRepo: Record<string, jest.Mock>;
+  let eventRepo: Record<string, jest.Mock>;
   let reservationsService: Record<string, jest.Mock>;
+  let eventsService: Record<string, jest.Mock>;
 
   beforeEach(async () => {
     productRepo = { find: jest.fn().mockResolvedValue([]) };
     tableRepo = { find: jest.fn().mockResolvedValue([]) };
+    eventRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(),
+    };
     reservationsService = {
       findAll: jest.fn().mockResolvedValue([]),
       getWeeklySchedule: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
+    };
+    eventsService = {
+      getPublicDetail: jest.fn(),
+      createPublicTickets: jest.fn(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -29,17 +39,8 @@ describe('PublicService', () => {
         { provide: getRepositoryToken(Product), useValue: productRepo },
         { provide: getRepositoryToken(RestaurantTable), useValue: tableRepo },
         { provide: ReservationsService, useValue: reservationsService },
-        {
-          provide: getRepositoryToken(Event),
-          useValue: { find: jest.fn(), findOne: jest.fn() },
-        },
-        {
-          provide: EventsService,
-          useValue: {
-            getPublicDetail: jest.fn(),
-            createPublicTickets: jest.fn(),
-          },
-        },
+        { provide: getRepositoryToken(Event), useValue: eventRepo },
+        { provide: EventsService, useValue: eventsService },
       ],
     }).compile();
     service = moduleRef.get(PublicService);
@@ -137,5 +138,111 @@ describe('PublicService', () => {
       tableId: 't1',
     } as never);
     expect(result.id).toBe('r1');
+  });
+
+  describe('findEvents', () => {
+    const publicEvent = (overrides: Record<string, unknown> = {}) => ({
+      id: 'ev-1',
+      title: 'Fiesta',
+      description: null,
+      startsAt: new Date('2026-07-01T20:00:00Z'),
+      endsAt: new Date('2026-07-02T23:00:00Z'),
+      isFreeEntry: false,
+      totalTickets: 10,
+      soldTickets: 0,
+      sessions: [],
+      ...overrides,
+    });
+
+    it('ordena las jornadas por fecha y hora', async () => {
+      eventRepo.find.mockResolvedValue([
+        publicEvent({
+          sessions: [
+            { date: '2026-07-02', startTime: '10:00', endTime: null },
+            { date: '2026-07-01', startTime: '18:00', endTime: '20:00' },
+            { date: '2026-07-01', startTime: '09:00', endTime: null },
+          ],
+        }),
+      ]);
+
+      const [event] = await service.findEvents();
+
+      expect(event.schedules.map((s) => `${s.date} ${s.startTime}`)).toEqual([
+        '2026-07-01 09:00',
+        '2026-07-01 18:00',
+        '2026-07-02 10:00',
+      ]);
+    });
+
+    it('mapea evento sin jornadas', async () => {
+      eventRepo.find.mockResolvedValue([publicEvent({ sessions: undefined })]);
+      const [event] = await service.findEvents();
+      expect(event.schedules).toEqual([]);
+    });
+
+    it('entrada liberada siempre tiene tickets disponibles', async () => {
+      eventRepo.find.mockResolvedValue([
+        publicEvent({ isFreeEntry: true, totalTickets: 5, soldTickets: 5 }),
+      ]);
+      const [event] = await service.findEvents();
+      expect(event.ticketsAvailable).toBe(true);
+    });
+
+    it('totalTickets 0 se trata como cupo ilimitado', async () => {
+      eventRepo.find.mockResolvedValue([
+        publicEvent({ totalTickets: 0, soldTickets: 99 }),
+      ]);
+      const [event] = await service.findEvents();
+      expect(event.ticketsAvailable).toBe(true);
+    });
+
+    it('evento agotado no tiene tickets disponibles', async () => {
+      eventRepo.find.mockResolvedValue([
+        publicEvent({ totalTickets: 10, soldTickets: 10 }),
+      ]);
+      const [event] = await service.findEvents();
+      expect(event.ticketsAvailable).toBe(false);
+    });
+  });
+
+  describe('eventos publicos', () => {
+    it('findEvent delega en EventsService', async () => {
+      eventsService.getPublicDetail.mockResolvedValue({ id: 'ev-1' });
+      const result = await service.findEvent('ev-1');
+      expect(eventsService.getPublicDetail).toHaveBeenCalledWith('ev-1');
+      expect(result.id).toBe('ev-1');
+    });
+
+    it('purchase mapea los items al contrato de EventsService', async () => {
+      eventsService.createPublicTickets.mockResolvedValue({ total: 100 });
+
+      await service.purchase('ev-1', {
+        buyerEmail: 'a@b.cl',
+        items: [
+          {
+            ticketTypeId: 'tt-1',
+            sessionId: 'ss-1',
+            attendanceDate: new Date('2026-07-01'),
+            attendeeFirstName: 'Ana',
+            attendeeLastName: 'Diaz',
+            menuSelection: { groups: [] },
+          },
+        ],
+      } as never);
+
+      expect(eventsService.createPublicTickets).toHaveBeenCalledWith('ev-1', {
+        buyerEmail: 'a@b.cl',
+        items: [
+          {
+            ticketTypeId: 'tt-1',
+            sessionId: 'ss-1',
+            attendanceDate: new Date('2026-07-01'),
+            attendeeFirstName: 'Ana',
+            attendeeLastName: 'Diaz',
+            menuSelection: { groups: [] },
+          },
+        ],
+      });
+    });
   });
 });

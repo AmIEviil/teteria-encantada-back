@@ -1,21 +1,20 @@
 import { Type } from 'class-transformer';
 import {
-  IsArray,
   IsDateString,
   IsInt,
   IsOptional,
   IsNumber,
   IsString,
+  Matches,
   MaxLength,
   Min,
-  ValidateNested,
 } from 'class-validator';
-import { CreateTrabajadorDocumentoDto } from './create-trabajador-documento.dto';
+import { RUT_MESSAGE, RUT_REGEX } from '../constants/rut.constant';
 
 export class UpdateTrabajadorDto {
   @IsOptional()
   @IsString()
-  @MaxLength(20)
+  @Matches(RUT_REGEX, { message: RUT_MESSAGE })
   rut?: string;
 
   @IsOptional()
@@ -52,10 +51,4 @@ export class UpdateTrabajadorDto {
   @IsString()
   @MaxLength(255)
   fotoUrl?: string;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateTrabajadorDocumentoDto)
-  documentos?: CreateTrabajadorDocumentoDto[];
 }

@@ -73,8 +73,10 @@ export class AuthService implements OnModuleInit {
   }
 
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
-    const roleName = registerDto.roleName ?? SYSTEM_ROLES.TECNICO;
-    const user = await this.createAndPersistUser(registerDto, roleName);
+    const user = await this.createAndPersistUser(
+      registerDto,
+      SYSTEM_ROLES.TECNICO,
+    );
     return this.buildAuthResponse(user);
   }
 
@@ -122,6 +124,9 @@ export class AuthService implements OnModuleInit {
       }
       if (!existing.googleId) {
         existing.googleId = profile.googleId;
+        existing.provider = AuthProvider.GOOGLE;
+        existing.first_name = profile.firstName.trim();
+        existing.last_name = profile.lastName?.trim() || null;
         await this.userRepository.save(existing);
       }
       return this.buildAuthResponse(existing);

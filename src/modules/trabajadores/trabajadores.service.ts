@@ -1,39 +1,32 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { User } from '../auth/entities/user.entity';
+import { SYSTEM_ROLES } from '../auth/constants/system-roles.constant';
+import { AuthProvider, User } from '../auth/entities/user.entity';
+import { Role } from '../auth/entities/role.entity';
+import { AuthUser } from '../auth/interfaces/auth-user.interface';
+import { AddWhitelistDto } from './dto/add-whitelist.dto';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { FindEmpleadoUsersDto } from './dto/find-empleado-users.dto';
 import { UpdateTrabajadorDto } from './dto/update-trabajador.dto';
-import { TrabajadorDocumento } from './entities/trabajador-documento.entity';
 import { Trabajador } from './entities/trabajador.entity';
-
-export interface PublicTrabajadorDocumento {
-  id: string;
-  nombreArchivo: string;
-  rutaArchivo: string;
-  tipoMime: string | null;
-  tamanoBytes: number | null;
-  descripcion: string | null;
-  createdAt: Date;
-}
 
 export interface PublicTrabajador {
   id: string;
   userId: string;
   rut: string;
-  comuna: string;
-  direccion: string;
   telefono: string;
-  fechaNacimiento: string;
-  edad: number;
-  sueldo: number;
+  comuna: string | null;
+  direccion: string | null;
+  fechaNacimiento: string | null;
+  edad: number | null;
+  sueldo: number | null;
   fotoUrl: string | null;
-  documentos: PublicTrabajadorDocumento[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,8 +66,8 @@ export class TrabajadoresService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Trabajador)
     private readonly trabajadorRepository: Repository<Trabajador>,
-    @InjectRepository(TrabajadorDocumento)
-    private readonly documentoRepository: Repository<TrabajadorDocumento>,
+    @InjectRepository(Role)
+    private readonly roleRepository: Repository<Role>,
   ) {}
 
   async findUsers(
@@ -116,6 +109,12 @@ export class TrabajadoresService {
       });
     }
 
+    if (filters.onlyStaff) {
+      queryBuilder.andWhere('role.name != :clienteRole', {
+        clienteRole: SYSTEM_ROLES.CLIENTE,
+      });
+    }
+
     const [users, totalItems] = await queryBuilder
       .skip(skip)
       .take(limit)
@@ -126,7 +125,6 @@ export class TrabajadoresService {
       userIds.length > 0
         ? await this.trabajadorRepository.find({
             where: { userId: In(userIds) },
-            relations: { documentos: true },
           })
         : [];
 
@@ -161,7 +159,7 @@ export class TrabajadoresService {
 
     const existingTrabajador = await this.trabajadorRepository.findOne({
       where: { userId: createTrabajadorDto.userId },
-      relations: { documentos: true, user: true },
+      relations: { user: true },
     });
 
     if (existingTrabajador) {
@@ -181,23 +179,13 @@ export class TrabajadoresService {
     const trabajador = this.trabajadorRepository.create({
       userId: createTrabajadorDto.userId,
       rut: createTrabajadorDto.rut.trim(),
-      comuna: createTrabajadorDto.comuna.trim(),
-      direccion: createTrabajadorDto.direccion.trim(),
       telefono: createTrabajadorDto.telefono.trim(),
-      fechaNacimiento: createTrabajadorDto.fechaNacimiento,
-      edad: createTrabajadorDto.edad,
-      sueldo: createTrabajadorDto.sueldo,
+      comuna: createTrabajadorDto.comuna?.trim() || null,
+      direccion: createTrabajadorDto.direccion?.trim() || null,
+      fechaNacimiento: createTrabajadorDto.fechaNacimiento ?? null,
+      edad: createTrabajadorDto.edad ?? null,
+      sueldo: createTrabajadorDto.sueldo ?? null,
       fotoUrl: createTrabajadorDto.fotoUrl?.trim() || null,
-      documentos:
-        createTrabajadorDto.documentos?.map((documento) =>
-          this.documentoRepository.create({
-            nombreArchivo: documento.nombreArchivo.trim(),
-            rutaArchivo: documento.rutaArchivo.trim(),
-            tipoMime: documento.tipoMime?.trim() || null,
-            tamanoBytes: documento.tamanoBytes ?? null,
-            descripcion: documento.descripcion?.trim() || null,
-          }),
-        ) ?? [],
     });
 
     const savedTrabajador = await this.trabajadorRepository.save(trabajador);
@@ -208,7 +196,7 @@ export class TrabajadoresService {
   async findOne(id: string): Promise<PublicTrabajador> {
     const trabajador = await this.trabajadorRepository.findOne({
       where: { id },
-      relations: { user: { role: true }, documentos: true },
+      relations: { user: { role: true } },
     });
 
     if (!trabajador) {
@@ -224,7 +212,7 @@ export class TrabajadoresService {
   ): Promise<PublicTrabajador> {
     const trabajador = await this.trabajadorRepository.findOne({
       where: { id },
-      relations: { user: { role: true }, documentos: true },
+      relations: { user: { role: true } },
     });
 
     if (!trabajador) {
@@ -253,21 +241,100 @@ export class TrabajadoresService {
       fotoUrl: updateTrabajadorDto.fotoUrl?.trim() ?? trabajador.fotoUrl,
     });
 
-    if (updateTrabajadorDto.documentos) {
-      trabajador.documentos = updateTrabajadorDto.documentos.map((documento) =>
-        this.documentoRepository.create({
-          nombreArchivo: documento.nombreArchivo.trim(),
-          rutaArchivo: documento.rutaArchivo.trim(),
-          tipoMime: documento.tipoMime?.trim() || null,
-          tamanoBytes: documento.tamanoBytes ?? null,
-          descripcion: documento.descripcion?.trim() || null,
-        }),
-      );
-    }
-
     const savedTrabajador = await this.trabajadorRepository.save(trabajador);
 
     return this.toPublicTrabajador(savedTrabajador);
+  }
+
+  async addToWhitelist(
+    authUser: AuthUser,
+    dto: AddWhitelistDto,
+  ): Promise<PublicEmpleadoUser> {
+    const email = dto.email.trim().toLowerCase();
+
+    const existing = await this.userRepository.findOneBy({ email });
+
+    if (existing) {
+      throw new ConflictException(
+        'Ya existe un usuario registrado con ese correo',
+      );
+    }
+
+    const role = await this.roleRepository
+      .createQueryBuilder('role')
+      .where('LOWER(role.name) = LOWER(:roleName)', { roleName: dto.roleName })
+      .getOne();
+
+    if (!role?.isActive) {
+      throw new NotFoundException(
+        `El rol ${dto.roleName} no existe o no está activo`,
+      );
+    }
+
+    if (
+      role.name === SYSTEM_ROLES.SUPERADMIN &&
+      authUser.role !== SYSTEM_ROLES.SUPERADMIN
+    ) {
+      throw new ForbiddenException(
+        'Solo un Superadmin puede otorgar el rol Superadmin',
+      );
+    }
+
+    const user = this.userRepository.create({
+      username: null,
+      first_name: email.split('@')[0].slice(0, 80),
+      last_name: null,
+      email,
+      passwordHash: null,
+      provider: AuthProvider.GOOGLE,
+      googleId: null,
+      role,
+      roleId: role.id,
+      isActive: true,
+      resetPasswordTokenHash: null,
+      resetPasswordExpiresAt: null,
+    });
+
+    const saved = await this.userRepository.save(user);
+
+    return this.toPublicEmpleadoUser(saved, null);
+  }
+
+  async setWhitelistActive(
+    authUser: AuthUser,
+    id: string,
+    isActive: boolean,
+  ): Promise<PublicEmpleadoUser> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: { role: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (
+      user.role.name === SYSTEM_ROLES.SUPERADMIN &&
+      authUser.role !== SYSTEM_ROLES.SUPERADMIN
+    ) {
+      throw new ForbiddenException(
+        'Solo un Superadmin puede modificar a otro Superadmin',
+      );
+    }
+
+    if (id === authUser.userId) {
+      throw new ForbiddenException('No puedes desactivar tu propia cuenta');
+    }
+
+    user.isActive = isActive;
+
+    const saved = await this.userRepository.save(user);
+    const trabajador = await this.trabajadorRepository.findOneBy({
+      userId: saved.id,
+    });
+
+    return this.toPublicEmpleadoUser(saved, trabajador);
   }
 
   private toPublicEmpleadoUser(
@@ -301,28 +368,17 @@ export class TrabajadoresService {
   }
 
   private toPublicTrabajador(trabajador: Trabajador): PublicTrabajador {
-    const documentos = trabajador.documentos ?? [];
-
     return {
       id: trabajador.id,
       userId: trabajador.userId,
       rut: trabajador.rut,
+      telefono: trabajador.telefono,
       comuna: trabajador.comuna,
       direccion: trabajador.direccion,
-      telefono: trabajador.telefono,
       fechaNacimiento: trabajador.fechaNacimiento,
       edad: trabajador.edad,
-      sueldo: Number(trabajador.sueldo),
+      sueldo: trabajador.sueldo === null ? null : Number(trabajador.sueldo),
       fotoUrl: trabajador.fotoUrl,
-      documentos: documentos.map((documento) => ({
-        id: documento.id,
-        nombreArchivo: documento.nombreArchivo,
-        rutaArchivo: documento.rutaArchivo,
-        tipoMime: documento.tipoMime,
-        tamanoBytes: documento.tamanoBytes,
-        descripcion: documento.descripcion,
-        createdAt: documento.createdAt,
-      })),
       createdAt: trabajador.createdAt,
       updatedAt: trabajador.updatedAt,
     };

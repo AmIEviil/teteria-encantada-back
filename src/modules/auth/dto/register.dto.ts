@@ -40,9 +40,4 @@ export class RegisterDto {
       'La contraseña debe tener al menos una letra mayúscula, una minúscula y un número',
   })
   password: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  roleName?: string;
 }
