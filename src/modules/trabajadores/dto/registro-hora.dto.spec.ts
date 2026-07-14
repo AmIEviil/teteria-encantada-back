@@ -1,6 +1,7 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { UpsertRegistroHoraDto } from './upsert-registro-hora.dto';
+import { FindRegistroHorasDto } from './find-registro-horas.dto';
 
 const buildDto = (data: Record<string, unknown>) =>
   plainToInstance(UpsertRegistroHoraDto, data);
@@ -41,5 +42,25 @@ describe('UpsertRegistroHoraDto', () => {
   it('rechaza una fecha con formato inválido', async () => {
     const errors = await validate(buildDto({ fecha: '13-07-2026', horas: 8 }));
     expect(errors.some((error) => error.property === 'fecha')).toBe(true);
+  });
+
+  it('rechaza una fecha calendario inexistente (2026-02-31)', async () => {
+    const errors = await validate(buildDto({ fecha: '2026-02-31', horas: 8 }));
+    expect(errors.some((error) => error.property === 'fecha')).toBe(true);
+  });
+});
+
+describe('FindRegistroHorasDto', () => {
+  const buildFindDto = (data: Record<string, unknown>) =>
+    plainToInstance(FindRegistroHorasDto, data);
+
+  it('acepta un mes con formato válido', async () => {
+    const errors = await validate(buildFindDto({ mes: '2026-07' }));
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rechaza un mes con mes calendario inválido (2026-99)', async () => {
+    const errors = await validate(buildFindDto({ mes: '2026-99' }));
+    expect(errors.some((error) => error.property === 'mes')).toBe(true);
   });
 });

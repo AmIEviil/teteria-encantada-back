@@ -1,10 +1,29 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { TrabajadoresService } from './trabajadores.service';
 import { AuthProvider, User } from '../auth/entities/user.entity';
 import { Role } from '../auth/entities/role.entity';
+import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { Trabajador } from './entities/trabajador.entity';
+
+const adminAuthUser: AuthUser = {
+  userId: 'admin-1',
+  username: 'admin',
+  email: 'admin@teteria.cl',
+  role: 'Admin',
+};
+
+const superadminAuthUser: AuthUser = {
+  userId: 'superadmin-1',
+  username: 'superadmin',
+  email: 'superadmin@teteria.cl',
+  role: 'Superadmin',
+};
 
 type AnyRepo = Record<string, jest.Mock>;
 
@@ -282,7 +301,7 @@ describe('TrabajadoresService', () => {
         }),
       );
 
-      const result = await service.addToWhitelist({
+      const result = await service.addToWhitelist(adminAuthUser, {
         email: '  Pedro@Teteria.CL ',
         roleName: 'Tecnico',
       });
@@ -301,7 +320,7 @@ describe('TrabajadoresService', () => {
       userRepository.findOneBy.mockResolvedValue({ id: 'user-9' });
 
       await expect(
-        service.addToWhitelist({
+        service.addToWhitelist(adminAuthUser, {
           email: 'pedro@teteria.cl',
           roleName: 'Tecnico',
         }),
@@ -316,11 +335,58 @@ describe('TrabajadoresService', () => {
       });
 
       await expect(
-        service.addToWhitelist({
+        service.addToWhitelist(adminAuthUser, {
           email: 'pedro@teteria.cl',
           roleName: 'Fantasma',
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('un Admin no puede otorgar el rol Superadmin', async () => {
+      userRepository.findOneBy.mockResolvedValue(null);
+      roleRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({
+          id: 'role-super',
+          name: 'Superadmin',
+          isActive: true,
+        }),
+      });
+
+      await expect(
+        service.addToWhitelist(adminAuthUser, {
+          email: 'pedro@teteria.cl',
+          roleName: 'Superadmin',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('un Superadmin puede otorgar el rol Superadmin', async () => {
+      userRepository.findOneBy.mockResolvedValue(null);
+      roleRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({
+          id: 'role-super',
+          name: 'Superadmin',
+          isActive: true,
+        }),
+      });
+      userRepository.create.mockImplementation((data) => data);
+      userRepository.save.mockImplementation((data) =>
+        Promise.resolve({
+          ...data,
+          id: 'user-1',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
+
+      const result = await service.addToWhitelist(superadminAuthUser, {
+        email: 'pedro@teteria.cl',
+        roleName: 'Superadmin',
+      });
+
+      expect(result.role.name).toBe('Superadmin');
     });
 
     it('desactivar deja al usuario inactivo', async () => {
@@ -338,12 +404,52 @@ describe('TrabajadoresService', () => {
       userRepository.save.mockImplementation((data) => Promise.resolve(data));
       trabajadorRepository.findOneBy.mockResolvedValue(null);
 
-      const result = await service.setWhitelistActive('user-1', false);
+      const result = await service.setWhitelistActive(
+        adminAuthUser,
+        'user-1',
+        false,
+      );
 
       expect(result.isActive).toBe(false);
       expect(userRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({ isActive: false }),
       );
+    });
+
+    it('un Admin no puede desactivar a un Superadmin', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'user-super',
+        email: 'jefe@teteria.cl',
+        username: null,
+        first_name: 'jefe',
+        last_name: null,
+        isActive: true,
+        role: { id: 'role-super', name: 'Superadmin', isActive: true },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await expect(
+        service.setWhitelistActive(adminAuthUser, 'user-super', false),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('un usuario no puede desactivar su propia cuenta', async () => {
+      userRepository.findOne.mockResolvedValue({
+        id: 'admin-1',
+        email: 'admin@teteria.cl',
+        username: null,
+        first_name: 'admin',
+        last_name: null,
+        isActive: true,
+        role: { id: 'role-admin', name: 'Admin', isActive: true },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await expect(
+        service.setWhitelistActive(adminAuthUser, 'admin-1', false),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });
