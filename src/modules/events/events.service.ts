@@ -24,6 +24,7 @@ import {
   UpdateEventTicketDto,
   UpdateEventTicketMenuSelectionDto,
 } from './dto/update-event-ticket.dto';
+import { CreateEventPurchaseDto } from './dto/create-event-purchase.dto';
 import {
   UpdateEventDto,
   UpdateEventSessionDto,
@@ -40,6 +41,9 @@ import { EventSession } from './entities/event-session.entity';
 import { EventSessionTicketAllocation } from './entities/event-session-ticket-allocation.entity';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { Event, EventStatus } from './entities/event.entity';
+import { EventPurchase, EventPurchaseStatus, EventPurchaseItemSnapshot } from './entities/event-purchase.entity';
+import { MailerService } from '../mailer/mailer.service';
+import { TicketsPdfService } from '../tickets-pdf/tickets-pdf.service';
 
 interface NormalizedMenuOption {
   id: string;
@@ -203,7 +207,11 @@ export class EventsService {
     private readonly dailyStockRepository: Repository<EventTicketTypeDailyStock>,
     @InjectRepository(EventTicket)
     private readonly eventTicketRepository: Repository<EventTicket>,
+    @InjectRepository(EventPurchase)
+    private readonly purchaseRepository: Repository<EventPurchase>,
     private readonly loyaltyService: LoyaltyService,
+    private readonly mailerService: MailerService,
+    private readonly ticketsPdfService: TicketsPdfService,
   ) {}
 
   async create(createEventDto: CreateEventDto): Promise<Event> {
@@ -909,6 +917,90 @@ export class EventsService {
 
     const event = await this.findOne(eventId);
     return this.toPublicPurchaseResult(event, created, input.buyerEmail);
+  }
+
+  async createPurchase(
+    eventId: string,
+    dto: CreateEventPurchaseDto,
+  ): Promise<PublicPurchaseResult> {
+    const purchase = await this.purchaseRepository.save(
+      this.purchaseRepository.create({
+        eventId,
+        buyerEmail: dto.buyerEmail,
+        itemsSnapshot: dto.items.map(i => ({
+           ticketTypeId: i.ticketTypeId,
+           sessionId: i.sessionId ?? null,
+           attendanceDate: i.attendanceDate ?? null,
+           attendeeFirstName: i.attendeeFirstName,
+           attendeeLastName: i.attendeeLastName,
+           menuSelection: i.menuSelection ?? null,
+        })),
+        total: 0,
+        status: EventPurchaseStatus.PAID,
+        mpPaymentId: 'INTERNAL_' + dto.paymentMethod,
+      })
+    );
+
+    const result = await this.createPublicTickets(eventId, {
+      buyerEmail: dto.buyerEmail,
+      items: dto.items as any,
+      purchaseId: purchase.id,
+      allowOversell: false,
+    });
+    
+    purchase.total = result.total;
+    await this.purchaseRepository.save(purchase);
+
+    const event = await this.findOne(purchase.eventId);
+    const templateUrlByTicketTypeId = new Map(
+      (event.ticketTypes ?? []).map((tt) => [
+        tt.id,
+        tt.customTicketTemplateUrl ?? null,
+      ]),
+    );
+    const sessionTimeById = new Map(
+      (event.sessions ?? []).map((s) => [s.id, s.startTime.slice(0, 5)]),
+    );
+    const seqByTicketId = await this.getTicketSequences(purchase.eventId);
+
+    const pdfInputs = result.tickets.map((t, index) => {
+      const snapshotItem = purchase.itemsSnapshot[index];
+      const customTemplateUrl = snapshotItem
+        ? (templateUrlByTicketTypeId.get(snapshotItem.ticketTypeId) ?? null)
+        : null;
+      const sessionTime = t.sessionId
+        ? (sessionTimeById.get(t.sessionId) ?? null)
+        : null;
+
+      const timeSegment = sessionTime ? sessionTime.replace(':', '') : '0000';
+      const dateSegment = t.attendanceDate.replace(/-/g, '');
+      const seq = String(seqByTicketId.get(t.id) ?? index + 1).padStart(4, '0');
+
+      return {
+        eventTitle: result.eventTitle,
+        ticketTypeName: t.ticketTypeName,
+        attendeeName: `${t.attendeeFirstName} ${t.attendeeLastName}`,
+        attendanceDate: t.attendanceDate,
+        sessionTime,
+        menuSummary: t.menuSummary,
+        ticketNumber: `TKT-${dateSegment}-${timeSegment}-${seq}`,
+        customTemplateUrl,
+      };
+    });
+
+    try {
+      const pdf = await this.ticketsPdfService.buildTicketsPdf(pdfInputs);
+      await this.mailerService.send({
+        to: purchase.buyerEmail,
+        subject: `Tus tickets — ${result.eventTitle}`,
+        html: `<p>¡Gracias por tu compra! Adjuntamos ${result.tickets.length} ticket(s) para <b>${result.eventTitle}</b>.</p>`,
+        attachments: [{ filename: 'tickets.pdf', content: pdf }],
+      });
+    } catch (err) {
+      console.error('Fallo enviando correo de tickets internos:', err);
+    }
+
+    return result;
   }
 
   // Correlativo de cada ticket dentro de su jornada (evento + fecha + sesión),

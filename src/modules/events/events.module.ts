@@ -11,6 +11,9 @@ import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 
+import { MailerModule } from '../mailer/mailer.module';
+import { TicketsPdfModule } from '../tickets-pdf/tickets-pdf.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -23,6 +26,8 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
       EventPurchase,
     ]),
     LoyaltyModule,
+    MailerModule,
+    TicketsPdfModule,
   ],
   controllers: [EventsController],
   providers: [EventsService],

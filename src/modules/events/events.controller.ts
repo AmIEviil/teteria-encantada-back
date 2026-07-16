@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { SYSTEM_ROLES } from '../auth/constants/system-roles.constant';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CreateEventPurchaseDto } from './dto/create-event-purchase.dto';
 import { CreateEventTicketDto } from './dto/create-event-ticket.dto';
 import { CreateEventDto } from './dto/create-event.dto';
 import { FindEventsDto } from './dto/find-events.dto';
@@ -69,6 +70,14 @@ export class EventsController {
     @Body() createEventTicketDto: CreateEventTicketDto,
   ): Promise<EventTicket[]> {
     return this.eventsService.createTicket(id, createEventTicketDto);
+  }
+
+  @Post(':id/purchase')
+  createPurchase(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() createEventPurchaseDto: CreateEventPurchaseDto,
+  ): Promise<any> {
+    return this.eventsService.createPurchase(id, createEventPurchaseDto);
   }
 
   @Get(':id/tickets')
