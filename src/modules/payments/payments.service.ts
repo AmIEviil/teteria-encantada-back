@@ -238,6 +238,9 @@ export class PaymentsService {
       const sessionTimeById = new Map(
         (event.sessions ?? []).map((s) => [s.id, s.startTime.slice(0, 5)]),
       );
+      const sessionNameById = new Map(
+        (event.sessions ?? []).map((s) => [s.id, s.name]),
+      );
       const seqByTicketId = await this.eventsService.getTicketSequences(
         purchase.eventId,
       );
@@ -250,10 +253,14 @@ export class PaymentsService {
         const sessionTime = t.sessionId
           ? (sessionTimeById.get(t.sessionId) ?? null)
           : null;
+        const sessionName = t.sessionId
+          ? (sessionNameById.get(t.sessionId) ?? null)
+          : null;
 
         return {
           eventTitle: result.eventTitle,
           ticketTypeName: t.ticketTypeName,
+          spectacleType: sessionName || 'EVENTO',
           attendeeName: `${t.attendeeFirstName} ${t.attendeeLastName}`,
           attendanceDate: t.attendanceDate,
           sessionTime,
@@ -262,8 +269,10 @@ export class PaymentsService {
             t.attendanceDate,
             sessionTime,
             seqByTicketId.get(t.id) ?? index + 1,
+            event.startsAt,
           ),
           customTemplateUrl,
+          price: t.price,
         };
       });
 
@@ -421,9 +430,10 @@ export class PaymentsService {
     attendanceDate: string,
     sessionTime: string | null,
     seq: number,
+    eventStartsAt: Date,
   ): string {
     const [, month, day] = attendanceDate.split('-');
-    const hour = sessionTime ? sessionTime.slice(0, 2) : '00';
+    const hour = sessionTime ? sessionTime.slice(0, 2) : String(eventStartsAt.getHours()).padStart(2, '0');
     return `#${day}${month}${hour}${String(seq).padStart(2, '0')}`;
   }
 

@@ -961,6 +961,9 @@ export class EventsService {
     const sessionTimeById = new Map(
       (event.sessions ?? []).map((s) => [s.id, s.startTime.slice(0, 5)]),
     );
+    const sessionNameById = new Map(
+      (event.sessions ?? []).map((s) => [s.id, s.name]),
+    );
     const seqByTicketId = await this.getTicketSequences(purchase.eventId);
 
     const pdfInputs = result.tickets.map((t, index) => {
@@ -971,20 +974,27 @@ export class EventsService {
       const sessionTime = t.sessionId
         ? (sessionTimeById.get(t.sessionId) ?? null)
         : null;
+      const sessionName = t.sessionId
+        ? (sessionNameById.get(t.sessionId) ?? null)
+        : null;
 
-      const timeSegment = sessionTime ? sessionTime.replace(':', '') : '0000';
-      const dateSegment = t.attendanceDate.replace(/-/g, '');
-      const seq = String(seqByTicketId.get(t.id) ?? index + 1).padStart(4, '0');
+      const [, month, day] = t.attendanceDate.split('-');
+      const hour = sessionTime 
+        ? sessionTime.slice(0, 2) 
+        : String(event.startsAt.getHours()).padStart(2, '0');
+      const seq = String(seqByTicketId.get(t.id) ?? index + 1).padStart(2, '0');
 
       return {
         eventTitle: result.eventTitle,
         ticketTypeName: t.ticketTypeName,
+        spectacleType: sessionName || 'EVENTO',
         attendeeName: `${t.attendeeFirstName} ${t.attendeeLastName}`,
         attendanceDate: t.attendanceDate,
         sessionTime,
         menuSummary: t.menuSummary,
-        ticketNumber: `TKT-${dateSegment}-${timeSegment}-${seq}`,
+        ticketNumber: `#${day}${month}${hour}${seq}`,
         customTemplateUrl,
+        price: t.price,
       };
     });
 

@@ -47,7 +47,7 @@ describe('TicketsPdfService', () => {
     const buf = await svc.buildTicketsPdf([
       {
         eventTitle: 'Noche de Té',
-        ticketTypeName: 'VIP',
+        ticketTypeName: 'VIP', spectacleType: 'EVENTO',
         attendeeName: 'Ana Díaz',
         attendanceDate: '2026-08-01',
         sessionTime: '20:00',
@@ -55,7 +55,7 @@ describe('TicketsPdfService', () => {
       },
       {
         eventTitle: 'Noche de Té',
-        ticketTypeName: 'VIP',
+        ticketTypeName: 'VIP', spectacleType: 'EVENTO',
         attendeeName: 'Luis Paz',
         attendanceDate: '2026-08-01',
         sessionTime: '20:00',
@@ -77,7 +77,7 @@ describe('TicketsPdfService', () => {
     const buf = await svc.buildTicketsPdf([
       {
         eventTitle: 'E',
-        ticketTypeName: 'T',
+        ticketTypeName: 'T', spectacleType: 'EVENTO',
         attendeeName: 'N',
         attendanceDate: '2026-08-01',
         sessionTime: null,
@@ -100,7 +100,7 @@ describe('TicketsPdfService', () => {
     const buf = await svc.buildTicketsPdf([
       {
         eventTitle: 'Coraline',
-        ticketTypeName: 'General',
+        ticketTypeName: 'General', spectacleType: 'EVENTO',
         attendeeName: 'Ana Díaz',
         attendanceDate: '2026-07-17',
         sessionTime: '10:00',
@@ -128,7 +128,7 @@ describe('TicketsPdfService', () => {
     const buf = await svc.buildTicketsPdf([
       {
         eventTitle: 'E',
-        ticketTypeName: 'T',
+        ticketTypeName: 'T', spectacleType: 'EVENTO',
         attendeeName: 'N',
         attendanceDate: '2026-08-01',
         sessionTime: null,
@@ -144,7 +144,7 @@ describe('TicketsPdfService', () => {
     const buf = await svc.buildTicketsPdf([
       {
         eventTitle: 'Noche de Té 🎉',
-        ticketTypeName: 'VIP',
+        ticketTypeName: 'VIP', spectacleType: 'EVENTO',
         attendeeName: 'Ana Muñoz Díaz',
         attendanceDate: '2026-08-01',
         sessionTime: '20:00',
@@ -164,7 +164,7 @@ describe('TicketsPdfService', () => {
     const buf = await svc.buildTicketsPdf([
       {
         eventTitle: 'E',
-        ticketTypeName: 'T',
+        ticketTypeName: 'T', spectacleType: 'EVENTO',
         attendeeName: 'N',
         attendanceDate: '2026-08-01',
         sessionTime: null,
@@ -183,7 +183,7 @@ describe('TicketsPdfService', () => {
     const buf = await svc.buildTicketsPdf([
       {
         eventTitle: 'E',
-        ticketTypeName: 'T',
+        ticketTypeName: 'T', spectacleType: 'EVENTO',
         attendeeName: 'N',
         attendanceDate: '2026-08-01',
         sessionTime: null,

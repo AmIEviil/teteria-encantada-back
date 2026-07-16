@@ -12,12 +12,14 @@ import { S3StorageService } from '../images/storage/s3-storage.service';
 export interface PdfTicketInput {
   eventTitle: string;
   ticketTypeName: string;
+  spectacleType: string;
   attendeeName: string;
   attendanceDate: string;
   sessionTime: string | null;
   menuSummary?: string | null;
   ticketNumber?: string | null;
   customTemplateUrl: string | null;
+  price?: number;
 }
 
 // Ancla de un campo sobre la plantilla, en fracciones del tamaño de la página
@@ -56,8 +58,8 @@ export const DEFAULT_TEMPLATE_LAYOUT: TicketTemplateLayout = {
 };
 
 const TEMPLATE_PAGE_WIDTH = 842; // el alto sale del ratio real de la imagen
-const FALLBACK_PAGE_W = 842; // A4 apaisado, sin plantilla
-const FALLBACK_PAGE_H = 595;
+const FALLBACK_PAGE_W = 595; // A4 retrato, sin plantilla
+const FALLBACK_PAGE_H = 842;
 const MARGIN = 48;
 
 @Injectable()
@@ -182,38 +184,142 @@ export class TicketsPdfService {
     font: PDFFont,
     bold: PDFFont,
   ): void {
-    const page = doc.addPage([FALLBACK_PAGE_W, FALLBACK_PAGE_H]);
-    const lines: Array<{ text: string; size: number; f: PDFFont }> = [
-      { text: t.eventTitle, size: 28, f: bold },
-      { text: t.ticketTypeName, size: 16, f: font },
-      { text: t.attendeeName, size: 22, f: bold },
-      {
-        text: `Día y hora: ${this.formatDateTime(t.attendanceDate, t.sessionTime)}`,
-        size: 16,
-        f: font,
-      },
-      {
-        text: t.menuSummary ? `Menú: ${t.menuSummary}` : '',
-        size: 16,
-        f: font,
-      },
-      {
-        text: t.ticketNumber ? `Ticket nro: ${t.ticketNumber}` : '',
-        size: 16,
-        f: bold,
-      },
-    ].filter((l) => l.text);
+    const W = FALLBACK_PAGE_W;
+    const H = FALLBACK_PAGE_H;
+    const page = doc.addPage([W, H]);
+    let currentY = H - MARGIN;
 
-    let y = FALLBACK_PAGE_H - MARGIN - 28;
-    for (const l of lines) {
-      page.drawText(this.sanitizeForFont(l.text, l.f), {
-        x: MARGIN,
-        y,
-        size: l.size,
-        font: l.f,
-        color: rgb(0.1, 0.1, 0.1),
+    const drawLine = (y: number) => {
+      page.drawLine({
+        start: { x: MARGIN, y },
+        end: { x: W - MARGIN, y },
+        thickness: 1,
+        color: rgb(0.8, 0.8, 0.8),
       });
-      y -= l.size + 14;
+    };
+
+    // Header
+    const headerLeft = this.sanitizeForFont("Experiencias D'encanto", bold);
+    const headerRight = this.sanitizeForFont('Ticket Reserva', bold);
+
+    page.drawText(headerLeft, {
+      x: MARGIN,
+      y: currentY - 14,
+      size: 14,
+      font: bold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+
+    const rightTextWidth = bold.widthOfTextAtSize(headerRight, 14);
+    const rightBoxWidth = rightTextWidth + 20;
+    const rightBoxHeight = 24;
+    
+    page.drawRectangle({
+      x: W - MARGIN - rightBoxWidth,
+      y: currentY - 19,
+      width: rightBoxWidth,
+      height: rightBoxHeight,
+      color: rgb(0.9, 0.9, 0.9),
+    });
+
+    page.drawText(headerRight, {
+      x: W - MARGIN - rightBoxWidth + 10,
+      y: currentY - 14,
+      size: 14,
+      font: bold,
+      color: rgb(0, 0, 0),
+    });
+
+    currentY -= 40;
+
+    // Body
+    const titleText = this.sanitizeForFont(t.eventTitle, bold);
+    const titleLines = this.wrap(titleText, bold, 24, W - MARGIN * 2);
+    for (const line of titleLines) {
+      page.drawText(line, { x: MARGIN, y: currentY - 24, size: 24, font: bold, color: rgb(0.1, 0.1, 0.1) });
+      currentY -= 28;
+    }
+    currentY -= 6;
+    drawLine(currentY);
+    currentY -= 20;
+
+    // Row: Tipo de espectaculo | Fecha
+    const typeLabel = this.sanitizeForFont(`Tipo de espectáculo: ${t.spectacleType}`, font);
+    const dateTimeLabel = this.sanitizeForFont(`Fecha: ${this.formatDateTime(t.attendanceDate, t.sessionTime)}`, font);
+    
+    page.drawText(typeLabel, { x: MARGIN, y: currentY - 12, size: 12, font });
+    const dtWidth = font.widthOfTextAtSize(dateTimeLabel, 12);
+    page.drawText(dateTimeLabel, { x: W - MARGIN - dtWidth, y: currentY - 12, size: 12, font });
+    currentY -= 22;
+    drawLine(currentY);
+    currentY -= 20;
+
+    // Row: Dirección | Comuna
+    const addrLabel = this.sanitizeForFont('Dirección: Maipú 305, Barrio Yungay', font);
+    const comunaLabel = this.sanitizeForFont('Comuna: Stgo Centro. Metro Quinta Normal.', font);
+    
+    page.drawText(addrLabel, { x: MARGIN, y: currentY - 12, size: 12, font });
+    const comunaWidth = font.widthOfTextAtSize(comunaLabel, 12);
+    page.drawText(comunaLabel, { x: W - MARGIN - comunaWidth, y: currentY - 12, size: 12, font });
+    currentY -= 22;
+    drawLine(currentY);
+    currentY -= 20;
+
+    // Row: Precio | Nombre
+    const priceFormatted = t.price != null ? `$${t.price.toLocaleString('es-CL')}` : 'N/A';
+    const priceLabel = this.sanitizeForFont(`Precio: ${priceFormatted}`, font);
+    const nameLabel = this.sanitizeForFont(`Nombre: ${t.attendeeName}`, font);
+    
+    page.drawText(priceLabel, { x: MARGIN, y: currentY - 12, size: 12, font });
+    const nameWidth = font.widthOfTextAtSize(nameLabel, 12);
+    page.drawText(nameLabel, { x: W - MARGIN - nameWidth, y: currentY - 12, size: 12, font });
+    currentY -= 22;
+    drawLine(currentY);
+    currentY -= 20;
+
+    // Row: Tipo de Ticket | Nro. Ticket
+    const ticketTypeStr = this.sanitizeForFont(`Tipo de Ticket: ${t.ticketTypeName}`, bold);
+    const ticketStr = this.sanitizeForFont(t.ticketNumber ? `Nro. Ticket: ${t.ticketNumber}` : 'Nro. Ticket: -', bold);
+    page.drawText(ticketTypeStr, { x: MARGIN, y: currentY - 12, size: 12, font: bold });
+    const ticketWidth = bold.widthOfTextAtSize(ticketStr, 12);
+    page.drawText(ticketStr, { x: W - MARGIN - ticketWidth, y: currentY - 12, size: 12, font: bold });
+    currentY -= 22;
+
+    if (t.menuSummary) {
+      drawLine(currentY);
+      currentY -= 20;
+      const menuStr = this.sanitizeForFont(`Menú: ${t.menuSummary}`, font);
+      const menuLines = this.wrap(menuStr, font, 12, W - MARGIN * 2);
+      for (const line of menuLines) {
+        page.drawText(line, { x: MARGIN, y: currentY - 12, size: 12, font });
+        currentY -= 16;
+      }
+      currentY -= 6;
+    }
+
+    // Footer
+    currentY = MARGIN + 130;
+    page.drawText(this.sanitizeForFont('Términos y Condiciones', bold), { x: MARGIN, y: currentY, size: 14, font: bold });
+    currentY -= 20;
+    
+    page.drawText(this.sanitizeForFont('RECUERDE:', bold), { x: MARGIN, y: currentY, size: 10, font: bold });
+    currentY -= 14;
+
+    const term1 = '- Las funciones comienzan a la hora indicada. Una vez iniciado el espectáculo no se permitirá el ingreso al salón pasado los 15 minutos de la función/espectáculo, para no interrumpir la experiencia de los asistentes que llegaron puntualmente. Solo se podrá ingresar en el intermedio, en caso que la función cuente con uno. Debido a esto, se recomienda llegar con anticipación para evitar contratiempos.';
+    const term2 = '- Experiencias D\'encanto se reserva el derecho de modificar salas, elenco, fechas, horarios y obras por razones de fuerza mayor. Así como también el derecho de admisión y permanencia.';
+
+    const term1Lines = this.wrap(this.sanitizeForFont(term1, font), font, 9, W - MARGIN * 2);
+    for (const line of term1Lines) {
+      page.drawText(line, { x: MARGIN, y: currentY, size: 9, font });
+      currentY -= 12;
+    }
+    
+    currentY -= 4;
+
+    const term2Lines = this.wrap(this.sanitizeForFont(term2, font), font, 9, W - MARGIN * 2);
+    for (const line of term2Lines) {
+      page.drawText(line, { x: MARGIN, y: currentY, size: 9, font });
+      currentY -= 12;
     }
   }
 
