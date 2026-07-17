@@ -433,7 +433,9 @@ export class PaymentsService {
     eventStartsAt: Date,
   ): string {
     const [, month, day] = attendanceDate.split('-');
-    const hour = sessionTime ? sessionTime.slice(0, 2) : String(eventStartsAt.getHours()).padStart(2, '0');
+    const hour = sessionTime
+      ? sessionTime.slice(0, 2)
+      : String(eventStartsAt.getHours()).padStart(2, '0');
     return `#${day}${month}${hour}${String(seq).padStart(2, '0')}`;
   }
 

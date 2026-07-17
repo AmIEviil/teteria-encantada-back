@@ -41,7 +41,10 @@ import { EventSession } from './entities/event-session.entity';
 import { EventSessionTicketAllocation } from './entities/event-session-ticket-allocation.entity';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { Event, EventStatus } from './entities/event.entity';
-import { EventPurchase, EventPurchaseStatus, EventPurchaseItemSnapshot } from './entities/event-purchase.entity';
+import {
+  EventPurchase,
+  EventPurchaseStatus,
+} from './entities/event-purchase.entity';
 import { MailerService } from '../mailer/mailer.service';
 import { TicketsPdfService } from '../tickets-pdf/tickets-pdf.service';
 
@@ -927,27 +930,28 @@ export class EventsService {
       this.purchaseRepository.create({
         eventId,
         buyerEmail: dto.buyerEmail,
-        itemsSnapshot: dto.items.map(i => ({
-           ticketTypeId: i.ticketTypeId,
-           sessionId: i.sessionId ?? null,
-           attendanceDate: i.attendanceDate ?? null,
-           attendeeFirstName: i.attendeeFirstName,
-           attendeeLastName: i.attendeeLastName,
-           menuSelection: i.menuSelection ?? null,
+        itemsSnapshot: dto.items.map((i) => ({
+          ticketTypeId: i.ticketTypeId,
+          sessionId: i.sessionId ?? null,
+          attendanceDate: i.attendanceDate ?? null,
+          attendeeFirstName: i.attendeeFirstName,
+          attendeeLastName: i.attendeeLastName,
+          menuSelection: i.menuSelection ?? null,
         })),
         total: 0,
         status: EventPurchaseStatus.PAID,
         mpPaymentId: 'INTERNAL_' + dto.paymentMethod,
-      })
+      }),
     );
 
     const result = await this.createPublicTickets(eventId, {
       buyerEmail: dto.buyerEmail,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       items: dto.items as any,
       purchaseId: purchase.id,
       allowOversell: false,
     });
-    
+
     purchase.total = result.total;
     await this.purchaseRepository.save(purchase);
 
@@ -979,8 +983,8 @@ export class EventsService {
         : null;
 
       const [, month, day] = t.attendanceDate.split('-');
-      const hour = sessionTime 
-        ? sessionTime.slice(0, 2) 
+      const hour = sessionTime
+        ? sessionTime.slice(0, 2)
         : String(event.startsAt.getHours()).padStart(2, '0');
       const seq = String(seqByTicketId.get(t.id) ?? index + 1).padStart(2, '0');
 
