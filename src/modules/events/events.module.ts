@@ -9,7 +9,6 @@ import { EventSessionTicketAllocation } from './entities/event-session-ticket-al
 import { EventPurchase } from './entities/event-purchase.entity';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
-import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 import { MailerModule } from '../mailer/mailer.module';
 import { TicketsPdfModule } from '../tickets-pdf/tickets-pdf.module';
@@ -25,7 +24,6 @@ import { TicketsPdfModule } from '../tickets-pdf/tickets-pdf.module';
       EventSessionTicketAllocation,
       EventPurchase,
     ]),
-    LoyaltyModule,
     MailerModule,
     TicketsPdfModule,
   ],

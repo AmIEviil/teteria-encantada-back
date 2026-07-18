@@ -39,7 +39,6 @@ import {
   OrderPaymentMethod,
   OrderStatus,
 } from './entities/order.entity';
-import { LoyaltyService } from '../loyalty/loyalty.service';
 
 interface NormalizedReportFilters {
   tableId?: string;
@@ -99,7 +98,6 @@ export class OrdersService {
     private readonly reservationRepository: Repository<Reservation>,
     @InjectRepository(MonthlyTableSalesSummary)
     private readonly monthlySummaryRepository: Repository<MonthlyTableSalesSummary>,
-    private readonly loyaltyService: LoyaltyService,
   ) {}
 
   private static readonly ACTIVE_ORDER_STATUSES: OrderStatus[] = [
@@ -442,7 +440,6 @@ export class OrdersService {
         order.paymentMethod = updateOrderDto.paymentMethod;
       }
 
-      const wasPaid = order.status === OrderStatus.PAID;
 
       if (updateOrderDto.status !== undefined) {
         order.status = updateOrderDto.status;
@@ -459,20 +456,6 @@ export class OrdersService {
 
       const savedOrder = await transactionalOrderRepository.save(order);
 
-      // Fidelización: devengar puntos sólo en la transición a PAID y con cliente registrado.
-      // wasPaid evita re-devengar si la orden ya estaba pagada.
-      if (
-        !wasPaid &&
-        savedOrder.status === OrderStatus.PAID &&
-        savedOrder.userId
-      ) {
-        await this.loyaltyService.earnPurchase(
-          savedOrder.userId,
-          savedOrder.id,
-          savedOrder.total,
-          entityManager,
-        );
-      }
 
       if (order.tableId) {
         await this.syncTableStatusWithActiveOrders(

@@ -11,7 +11,6 @@ import { PublicModule } from './modules/public/public.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { ReservationsModule } from './modules/reservations/reservations.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
-import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 
 describe('Module definitions load', () => {
   it('todos los modulos estan definidos', () => {
@@ -28,7 +27,6 @@ describe('Module definitions load', () => {
       RealtimeModule,
       ReservationsModule,
       TrabajadoresModule,
-      WhatsappModule,
     ];
     for (const moduleClass of modules) {
       expect(typeof moduleClass).toBe('function');

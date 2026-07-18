@@ -18,7 +18,6 @@ import {
   OrderReportOrderDirection,
   OrderReportSortBy,
 } from './dto/get-orders-report.dto';
-import { LoyaltyService } from '../loyalty/loyalty.service';
 
 type AnyRepo = Record<string, jest.Mock> & { manager?: unknown };
 
@@ -73,12 +72,8 @@ describe('OrdersService', () => {
   let txSummary: AnyRepo;
   let productQb: ReturnType<typeof makeQb>;
   let orderQb: ReturnType<typeof makeQb>;
-  let loyaltyServiceMock: { earnPurchase: jest.Mock };
 
   beforeEach(async () => {
-    loyaltyServiceMock = {
-      earnPurchase: jest.fn().mockResolvedValue(undefined),
-    };
     productQb = makeQb();
     orderQb = makeQb();
 
@@ -156,7 +151,6 @@ describe('OrdersService', () => {
           provide: getRepositoryToken(MonthlyTableSalesSummary),
           useValue: summaryRepo,
         },
-        { provide: LoyaltyService, useValue: loyaltyServiceMock },
       ],
     }).compile();
 
@@ -431,36 +425,6 @@ describe('OrdersService', () => {
       expect(result.closedAt).toBeInstanceOf(Date);
     });
 
-    it('devenga puntos de fidelizacion al pagar con cliente registrado', async () => {
-      txOrder.findOneBy.mockResolvedValue({
-        id: 'o1',
-        tableId: null,
-        closedAt: null,
-        status: OrderStatus.SERVED,
-        userId: 'u1',
-        total: 200,
-      });
-      await service.update('o1', { status: OrderStatus.PAID } as never);
-      expect(loyaltyServiceMock.earnPurchase).toHaveBeenCalledWith(
-        'u1',
-        'o1',
-        200,
-        expect.anything(),
-      );
-    });
-
-    it('no devenga puntos si la orden ya estaba pagada', async () => {
-      txOrder.findOneBy.mockResolvedValue({
-        id: 'o1',
-        tableId: null,
-        closedAt: new Date(),
-        status: OrderStatus.PAID,
-        userId: 'u1',
-        total: 200,
-      });
-      await service.update('o1', { status: OrderStatus.PAID } as never);
-      expect(loyaltyServiceMock.earnPurchase).not.toHaveBeenCalled();
-    });
 
     it('estado abierto limpia closedAt y sincroniza mesa', async () => {
       txOrder.findOneBy.mockResolvedValue({

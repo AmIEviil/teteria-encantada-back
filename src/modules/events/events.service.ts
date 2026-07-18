@@ -39,7 +39,6 @@ import {
 import { EventTicket, EventTicketStatus } from './entities/event-ticket.entity';
 import { EventSession } from './entities/event-session.entity';
 import { EventSessionTicketAllocation } from './entities/event-session-ticket-allocation.entity';
-import { LoyaltyService } from '../loyalty/loyalty.service';
 import { Event, EventStatus } from './entities/event.entity';
 import {
   EventPurchase,
@@ -212,7 +211,6 @@ export class EventsService {
     private readonly eventTicketRepository: Repository<EventTicket>,
     @InjectRepository(EventPurchase)
     private readonly purchaseRepository: Repository<EventPurchase>,
-    private readonly loyaltyService: LoyaltyService,
     private readonly mailerService: MailerService,
     private readonly ticketsPdfService: TicketsPdfService,
   ) {}
@@ -789,16 +787,6 @@ export class EventsService {
 
     const savedTickets = await this.eventTicketRepository.save(tickets);
     await this.syncEventSoldTickets(eventId);
-
-    // Fidelización: puntos de asistencia una vez por taller con cliente registrado.
-    if (event.isWorkshop && createEventTicketDto.userId) {
-      await this.loyaltyService.earnAttendance(
-        createEventTicketDto.userId,
-        event.id,
-        event.workshopPoints,
-      );
-    }
-
     return savedTickets;
   }
 

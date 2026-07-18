@@ -14,9 +14,7 @@ import { EventsModule } from './modules/events/events.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
 import { PublicModule } from './modules/public/public.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
-import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PaymentsModule } from './modules/payments/payments.module';
 
@@ -54,9 +52,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     AuthModule,
     MigrationsModule,
     ScheduleModule.forRoot(),
-    WhatsappModule,
     RealtimeModule,
-    LoyaltyModule,
     PaymentsModule,
   ],
   controllers: [AppController],

@@ -8,7 +8,6 @@ import { OrderItem } from './entities/order-item.entity';
 import { Order } from './entities/order.entity';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
-import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 @Module({
   imports: [
@@ -20,7 +19,6 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
       Reservation,
       MonthlyTableSalesSummary,
     ]),
-    LoyaltyModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],
