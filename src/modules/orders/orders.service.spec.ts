@@ -425,7 +425,6 @@ describe('OrdersService', () => {
       expect(result.closedAt).toBeInstanceOf(Date);
     });
 
-
     it('estado abierto limpia closedAt y sincroniza mesa', async () => {
       txOrder.findOneBy.mockResolvedValue({
         id: 'o1',

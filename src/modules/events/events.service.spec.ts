@@ -945,7 +945,6 @@ describe('EventsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-
     it('rechaza cupo diario agotado', async () => {
       eventRepo.findOne.mockResolvedValue(
         buildEvent({

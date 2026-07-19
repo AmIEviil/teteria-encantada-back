@@ -440,7 +440,6 @@ export class OrdersService {
         order.paymentMethod = updateOrderDto.paymentMethod;
       }
 
-
       if (updateOrderDto.status !== undefined) {
         order.status = updateOrderDto.status;
 
@@ -455,7 +454,6 @@ export class OrdersService {
       }
 
       const savedOrder = await transactionalOrderRepository.save(order);
-
 
       if (order.tableId) {
         await this.syncTableStatusWithActiveOrders(
