@@ -404,26 +404,35 @@ export class PaymentsService {
     });
     if (!purchase) return null;
 
+    // mpPaymentId se escribe DENTRO de este mismo update condicional, no en
+    // un update aparte después del claim. Un UPDATE separado abriría una
+    // ventana: si fallara (un blip de base), la fila ya habría quedado PAID
+    // por el claim de arriba pero sin mpPaymentId y sin pasar por el try que
+    // sigue (los tickets ni se intentan); el próximo webhook vería la compra
+    // PAID (su propio claim fallaría) y, como mpPaymentId seguiría null, ni
+    // isDuplicatePayment ni isTerminalWithoutTickets se activarían en
+    // handleWebhook: cobro capturado, sin tickets, sin alerta y sin ningún
+    // rastro del pago para investigar. Plegado en el claim, que es atómico,
+    // status y mpPaymentId se escriben juntos o no se escribe nada; además
+    // ahorra una consulta. Sin esto tampoco habría forma de reconciliar la
+    // compra ante un reembolso/contracargo, ni de distinguir (en
+    // handleWebhook, cuando el claim falla) un segundo pago real sobre el
+    // mismo QR de un simple reintento del mismo webhook. pay() ya escribe
+    // mpPaymentId por su cuenta antes de llamar a fulfill (ahí sí se conoce
+    // sincrónicamente el resultado del charge), así que acá sólo se escribe
+    // cuando viene explícito: el camino webhook.
     const claim = await this.purchaseRepository.update(
       { id: purchaseId, status: EventPurchaseStatus.PENDING },
-      { status: EventPurchaseStatus.PAID },
+      {
+        status: EventPurchaseStatus.PAID,
+        ...(mpPaymentId !== undefined ? { mpPaymentId } : {}),
+      },
     );
 
     if (claim.affected !== 1) {
       // Otro proceso ya reclamó (o la compra no estaba PENDING). No hacemos
       // nada: ni tickets ni correo.
       return null;
-    }
-
-    // Se persiste el id del pago de MP que ganó la carrera. Sin esto no hay
-    // forma de reconciliar la compra ante un reembolso/contracargo, y
-    // tampoco de distinguir (en handleWebhook, cuando el claim falla) un
-    // segundo pago real sobre el mismo QR de un simple reintento del mismo
-    // webhook. pay() ya escribe mpPaymentId por su cuenta antes de llamar a
-    // fulfill (ahí sí se conoce sincrónicamente el resultado del charge), así
-    // que acá sólo se escribe cuando viene explícito: el camino webhook.
-    if (mpPaymentId !== undefined) {
-      await this.purchaseRepository.update(purchaseId, { mpPaymentId });
     }
 
     let result: PublicPurchaseResult;

@@ -631,10 +631,14 @@ describe('PaymentsService', () => {
       // Sin esto no habría forma de reconciliar la compra con el pago de MP
       // ante un reembolso/contracargo, ni de distinguir un pago duplicado de
       // un reintento del mismo webhook (ver alerta de pago sin tickets).
+      // mpPaymentId se escribe DENTRO del mismo update condicional que el
+      // claim PENDING -> PAID (no en un update aparte): ver comentario en
+      // fulfill() sobre por qué un update separado es peligroso.
       expect(purchaseRepo.getValue()?.mpPaymentId).toBe('mp1');
-      expect(purchaseRepo.update).toHaveBeenCalledWith('p1', {
-        mpPaymentId: 'mp1',
-      });
+      expect(purchaseRepo.update).toHaveBeenCalledWith(
+        { id: 'p1', status: EventPurchaseStatus.PENDING },
+        { status: EventPurchaseStatus.PAID, mpPaymentId: 'mp1' },
+      );
     });
 
     it('webhook sin externalReference no hace nada', async () => {
