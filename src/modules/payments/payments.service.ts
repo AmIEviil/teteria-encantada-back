@@ -5,7 +5,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { LessThan, Repository } from 'typeorm';
 import {
   EventPurchase,
   EventPurchaseItemSnapshot,
@@ -238,6 +239,67 @@ export class PaymentsService {
     };
   }
 
+  // Mismo patrón de idempotencia que fulfill(): update condicional sobre
+  // PENDING. Si la compra ya fue pagada por un webhook que llegó justo antes,
+  // no se pisa y se devuelve el estado real.
+  async cancelQrCheckout(
+    purchaseId: string,
+  ): Promise<{ status: EventPurchaseStatus }> {
+    const purchase = await this.purchaseRepository.findOne({
+      where: { id: purchaseId },
+    });
+    if (!purchase) {
+      throw new NotFoundException('Compra no encontrada');
+    }
+
+    const claim = await this.purchaseRepository.update(
+      { id: purchaseId, status: EventPurchaseStatus.PENDING },
+      { status: EventPurchaseStatus.CANCELLED },
+    );
+
+    if (claim.affected !== 1) {
+      const fresh = await this.purchaseRepository.findOne({
+        where: { id: purchaseId },
+      });
+      return { status: fresh?.status ?? purchase.status };
+    }
+
+    this.realtime.emitEventPurchaseChanged({
+      purchaseId,
+      eventId: purchase.eventId,
+      status: 'CANCELLED',
+    });
+    return { status: EventPurchaseStatus.CANCELLED };
+  }
+
+  // El update se hace fila por fila y condicionado a PENDING (no como un
+  // UPDATE masivo) para no pisar una compra que un webhook esté fulfillando
+  // en este mismo instante.
+  @Cron(CronExpression.EVERY_MINUTE)
+  async expireQrCheckouts(): Promise<void> {
+    const candidates = await this.purchaseRepository.find({
+      where: {
+        status: EventPurchaseStatus.PENDING,
+        origin: EventPurchaseOrigin.ADMIN_QR,
+        expiresAt: LessThan(new Date()),
+      },
+    });
+
+    for (const candidate of candidates) {
+      const claim = await this.purchaseRepository.update(
+        { id: candidate.id, status: EventPurchaseStatus.PENDING },
+        { status: EventPurchaseStatus.EXPIRED },
+      );
+      if (claim.affected !== 1) continue;
+
+      this.realtime.emitEventPurchaseChanged({
+        purchaseId: candidate.id,
+        eventId: candidate.eventId,
+        status: 'EXPIRED',
+      });
+    }
+  }
+
   async handleWebhook(paymentId: string): Promise<void> {
     const payment = await this.mercadoPago.getPayment(paymentId);
     if (!payment.externalReference) return;
@@ -322,6 +384,12 @@ export class PaymentsService {
     }
 
     await this.sendTicketsEmail(purchase, result);
+
+    this.realtime.emitEventPurchaseChanged({
+      purchaseId,
+      eventId: purchase.eventId,
+      status: 'PAID',
+    });
     return result;
   }
 

@@ -23,7 +23,10 @@ const makePurchaseRepo = (initial?: Record<string, unknown>) => {
       return value;
     }),
     findOne: jest.fn(async () => (value ? { ...value } : null)),
-    find: jest.fn(async () => (value ? [{ ...value }] : [])),
+    find: jest.fn(
+      async (_query: { where: Record<string, unknown> }) =>
+        value ? [{ ...value }] : [],
+    ),
     update: jest.fn(
       async (
         criteria: Record<string, unknown> | string,
@@ -872,6 +875,117 @@ describe('PaymentsService', () => {
       const svc = build();
 
       await expect(svc.getQrCheckout('nope')).rejects.toThrow(/no encontrada/i);
+    });
+  });
+
+  describe('cancelQrCheckout', () => {
+    it('cancela una compra PENDING y avisa por tiempo real', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PENDING,
+        origin: 'ADMIN_QR',
+      });
+      const svc = build();
+
+      const res = await svc.cancelQrCheckout('p1');
+
+      expect(res.status).toBe(EventPurchaseStatus.CANCELLED);
+      expect(purchaseRepo.getValue()?.status).toBe(
+        EventPurchaseStatus.CANCELLED,
+      );
+      expect(realtime.emitEventPurchaseChanged).toHaveBeenCalledWith({
+        purchaseId: 'p1',
+        eventId: 'e1',
+        status: 'CANCELLED',
+      });
+    });
+
+    it('no pisa una compra ya pagada y devuelve su estado real', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PAID,
+        origin: 'ADMIN_QR',
+      });
+      const svc = build();
+
+      const res = await svc.cancelQrCheckout('p1');
+
+      expect(res.status).toBe(EventPurchaseStatus.PAID);
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
+      expect(realtime.emitEventPurchaseChanged).not.toHaveBeenCalled();
+    });
+
+    it('lanza si la compra no existe', async () => {
+      purchaseRepo = makePurchaseRepo();
+      const svc = build();
+
+      await expect(svc.cancelQrCheckout('nope')).rejects.toThrow(
+        /no encontrada/i,
+      );
+    });
+  });
+
+  describe('expireQrCheckouts', () => {
+    it('expira una compra ADMIN_QR vencida y avisa por tiempo real', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PENDING,
+        origin: 'ADMIN_QR',
+        expiresAt: new Date(Date.now() - 60_000),
+      });
+      const svc = build();
+
+      await svc.expireQrCheckouts();
+
+      expect(purchaseRepo.getValue()?.status).toBe(
+        EventPurchaseStatus.EXPIRED,
+      );
+      expect(realtime.emitEventPurchaseChanged).toHaveBeenCalledWith({
+        purchaseId: 'p1',
+        eventId: 'e1',
+        status: 'EXPIRED',
+      });
+    });
+
+    it('filtra por estado PENDING, origen ADMIN_QR y expiresAt vencido', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PENDING,
+        origin: 'ADMIN_QR',
+        expiresAt: new Date(Date.now() - 60_000),
+      });
+      const svc = build();
+
+      await svc.expireQrCheckouts();
+
+      // El filtro por origin es lo que evita tocar las compras del sitio
+      // público, que no tienen ventana de tiempo.
+      const where = purchaseRepo.find.mock.calls[0][0].where;
+      expect(where.status).toBe(EventPurchaseStatus.PENDING);
+      expect(where.origin).toBe('ADMIN_QR');
+      expect(where.expiresAt).toBeDefined();
+    });
+
+    it('no avisa si otro proceso ya reclamó la compra en el intertanto', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PENDING,
+        origin: 'ADMIN_QR',
+        expiresAt: new Date(Date.now() - 60_000),
+      });
+      // find devuelve la fila, pero para cuando corre el update ya está PAID:
+      // el update condicional {id, status: PENDING} devuelve affected 0.
+      purchaseRepo.find.mockImplementation(async () => {
+        const row = purchaseRepo.getValue();
+        await purchaseRepo.update('p1', { status: EventPurchaseStatus.PAID });
+        return row ? [{ ...row }] : [];
+      });
+      const svc = build();
+
+      await svc.expireQrCheckouts();
+
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
+      expect(realtime.emitEventPurchaseChanged).not.toHaveBeenCalled();
     });
   });
 });
