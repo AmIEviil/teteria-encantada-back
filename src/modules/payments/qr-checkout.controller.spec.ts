@@ -20,21 +20,21 @@ describe('QrCheckoutController', () => {
     expect(res).toEqual({ purchaseId: 'p1' });
   });
 
-  it('get delega el purchaseId', async () => {
+  it('get delega el eventId y el purchaseId de la ruta', async () => {
     service.getQrCheckout.mockResolvedValue({ status: 'PENDING' });
 
-    const res = await build().get('p1');
+    const res = await build().get('e1', 'p1');
 
-    expect(service.getQrCheckout).toHaveBeenCalledWith('p1');
+    expect(service.getQrCheckout).toHaveBeenCalledWith('e1', 'p1');
     expect(res).toEqual({ status: 'PENDING' });
   });
 
-  it('cancel delega el purchaseId', async () => {
+  it('cancel delega el eventId y el purchaseId de la ruta', async () => {
     service.cancelQrCheckout.mockResolvedValue({ status: 'CANCELLED' });
 
-    const res = await build().cancel('p1');
+    const res = await build().cancel('e1', 'p1');
 
-    expect(service.cancelQrCheckout).toHaveBeenCalledWith('p1');
+    expect(service.cancelQrCheckout).toHaveBeenCalledWith('e1', 'p1');
     expect(res).toEqual({ status: 'CANCELLED' });
   });
 });

@@ -26,15 +26,17 @@ export class QrCheckoutController {
 
   @Get(':purchaseId')
   get(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
     @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
   ): Promise<QrCheckoutStatusResult> {
-    return this.paymentsService.getQrCheckout(purchaseId);
+    return this.paymentsService.getQrCheckout(eventId, purchaseId);
   }
 
   @Post(':purchaseId/cancel')
   cancel(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
     @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
   ): Promise<{ status: EventPurchaseStatus }> {
-    return this.paymentsService.cancelQrCheckout(purchaseId);
+    return this.paymentsService.cancelQrCheckout(eventId, purchaseId);
   }
 }

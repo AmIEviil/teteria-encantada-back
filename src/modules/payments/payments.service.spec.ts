@@ -1,5 +1,8 @@
 import { PaymentsService } from './payments.service';
-import { EventPurchaseStatus } from '../events/entities/event-purchase.entity';
+import {
+  EventPurchaseOrigin,
+  EventPurchaseStatus,
+} from '../events/entities/event-purchase.entity';
 
 interface UpdateResult {
   affected: number;
@@ -599,6 +602,41 @@ describe('PaymentsService', () => {
       expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
     });
 
+    it('webhook approved persiste el mpPaymentId del pago en la compra fulfillada', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        buyerEmail: 'b@t.cl',
+        itemsSnapshot: [
+          {
+            ticketTypeId: 'tt1',
+            sessionId: null,
+            attendanceDate: '2026-08-01',
+            attendeeFirstName: 'A',
+            attendeeLastName: 'B',
+            menuSelection: null,
+          },
+        ],
+        status: EventPurchaseStatus.PENDING,
+      });
+      const svc = build();
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'ok',
+        externalReference: 'p1',
+      });
+
+      await svc.handleWebhook('mp1');
+
+      // Sin esto no habría forma de reconciliar la compra con el pago de MP
+      // ante un reembolso/contracargo, ni de distinguir un pago duplicado de
+      // un reintento del mismo webhook (ver alerta de pago sin tickets).
+      expect(purchaseRepo.getValue()?.mpPaymentId).toBe('mp1');
+      expect(purchaseRepo.update).toHaveBeenCalledWith('p1', {
+        mpPaymentId: 'mp1',
+      });
+    });
+
     it('webhook sin externalReference no hace nada', async () => {
       const svc = build();
       mp.getPayment.mockResolvedValue({
@@ -855,6 +893,7 @@ describe('PaymentsService', () => {
     it('devuelve el estado actual de la compra', async () => {
       purchaseRepo = makePurchaseRepo({
         eventId: 'e1',
+        origin: 'ADMIN_QR',
         status: EventPurchaseStatus.PAID,
         total: 10000,
         checkoutUrl: 'https://mp.test/checkout/pref-1',
@@ -862,7 +901,7 @@ describe('PaymentsService', () => {
       });
       const svc = build();
 
-      const res = await svc.getQrCheckout('p1');
+      const res = await svc.getQrCheckout('e1', 'p1');
 
       expect(res.status).toBe(EventPurchaseStatus.PAID);
       expect(res.total).toBe(10000);
@@ -874,7 +913,30 @@ describe('PaymentsService', () => {
       purchaseRepo = makePurchaseRepo();
       const svc = build();
 
-      await expect(svc.getQrCheckout('nope')).rejects.toThrow(/no encontrada/i);
+      await expect(svc.getQrCheckout('e1', 'nope')).rejects.toThrow(
+        /no encontrada/i,
+      );
+    });
+
+    it('no encuentra una compra de otro evento u otro origen (scoping por eventId + origin ADMIN_QR)', async () => {
+      // La compra existe, pero pertenece a otro evento o a otro origen
+      // (p.ej. una PENDING del sitio público creada por pay()): el where
+      // real de TypeORM no matchearía, así que el fake simula ese "no
+      // encontrado" devolviendo null.
+      purchaseRepo = makePurchaseRepo();
+      purchaseRepo.findOne = jest.fn().mockResolvedValue(null);
+      const svc = build();
+
+      await expect(svc.getQrCheckout('e1', 'p1')).rejects.toThrow(
+        /no encontrada/i,
+      );
+      expect(purchaseRepo.findOne).toHaveBeenCalledWith({
+        where: {
+          id: 'p1',
+          eventId: 'e1',
+          origin: EventPurchaseOrigin.ADMIN_QR,
+        },
+      });
     });
   });
 
@@ -887,7 +949,7 @@ describe('PaymentsService', () => {
       });
       const svc = build();
 
-      const res = await svc.cancelQrCheckout('p1');
+      const res = await svc.cancelQrCheckout('e1', 'p1');
 
       expect(res.status).toBe(EventPurchaseStatus.CANCELLED);
       expect(purchaseRepo.getValue()?.status).toBe(
@@ -908,7 +970,7 @@ describe('PaymentsService', () => {
       });
       const svc = build();
 
-      const res = await svc.cancelQrCheckout('p1');
+      const res = await svc.cancelQrCheckout('e1', 'p1');
 
       expect(res.status).toBe(EventPurchaseStatus.PAID);
       expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
@@ -919,9 +981,32 @@ describe('PaymentsService', () => {
       purchaseRepo = makePurchaseRepo();
       const svc = build();
 
-      await expect(svc.cancelQrCheckout('nope')).rejects.toThrow(
+      await expect(svc.cancelQrCheckout('e1', 'nope')).rejects.toThrow(
         /no encontrada/i,
       );
+    });
+
+    it('no encuentra (ni cancela) una compra de otro evento u otro origen, p.ej. una PENDING del flujo público pay()', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'other-event',
+        status: EventPurchaseStatus.PENDING,
+        // Sin origin: así es como queda una compra creada por pay() (el
+        // flujo público), a diferencia de ADMIN_QR.
+      });
+      purchaseRepo.findOne = jest.fn().mockResolvedValue(null);
+      const svc = build();
+
+      await expect(svc.cancelQrCheckout('e1', 'p1')).rejects.toThrow(
+        /no encontrada/i,
+      );
+      expect(purchaseRepo.findOne).toHaveBeenCalledWith({
+        where: {
+          id: 'p1',
+          eventId: 'e1',
+          origin: EventPurchaseOrigin.ADMIN_QR,
+        },
+      });
+      expect(purchaseRepo.update).not.toHaveBeenCalled();
     });
   });
 
@@ -1075,6 +1160,55 @@ describe('PaymentsService', () => {
         status: EventPurchaseStatus.PAID,
         total: 10000,
         buyerEmail: 'b@t.cl',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp1');
+
+      expect(mailer.send).not.toHaveBeenCalled();
+    });
+
+    it('un segundo pago aprobado (id distinto) sobre una compra ya PAID por el mismo QR dispara la alerta de duplicado exactamente una vez', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PAID,
+        total: 10000,
+        buyerEmail: 'b@t.cl',
+        // mpPaymentId del PRIMER pago, ya persistido por el fulfill original.
+        mpPaymentId: 'mp-original',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp-dup',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp-dup');
+
+      // No se vuelve a fulfillar: los tickets ya existen del primer pago.
+      expect(events.createPublicTickets).not.toHaveBeenCalled();
+      expect(mailer.send).toHaveBeenCalledTimes(1);
+      const mail = mailer.send.mock.calls[0][0];
+      expect(mail.subject).toContain('p1');
+      expect(mail.html).toContain('mp-original');
+      expect(mail.html).toContain('mp-dup');
+    });
+
+    it('un reintento del webhook con el MISMO paymentId sobre una compra ya PAID no alerta (es la entrega normal de MP, no un duplicado)', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PAID,
+        total: 10000,
+        buyerEmail: 'b@t.cl',
+        mpPaymentId: 'mp1',
       });
       mp.getPayment.mockResolvedValue({
         id: 'mp1',

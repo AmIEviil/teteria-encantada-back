@@ -221,9 +221,21 @@ export class PaymentsService {
 
   // Respaldo del canal de tiempo real: si el socket estaba caído cuando llegó
   // el webhook, el modal consulta acá al montar el panel.
-  async getQrCheckout(purchaseId: string): Promise<QrCheckoutStatusResult> {
+  //
+  // Se filtra por eventId + origin ADMIN_QR (no sólo por id): sin esto, el
+  // endpoint del QR admin de un evento cualquiera podía leer/tocar una
+  // compra PENDING creada por el flujo público (pay()), que es un origen
+  // totalmente distinto y no tiene por qué exponerse acá.
+  async getQrCheckout(
+    eventId: string,
+    purchaseId: string,
+  ): Promise<QrCheckoutStatusResult> {
     const purchase = await this.purchaseRepository.findOne({
-      where: { id: purchaseId },
+      where: {
+        id: purchaseId,
+        eventId,
+        origin: EventPurchaseOrigin.ADMIN_QR,
+      },
     });
     if (!purchase) {
       throw new NotFoundException('Compra no encontrada');
@@ -242,11 +254,22 @@ export class PaymentsService {
   // Mismo patrón de idempotencia que fulfill(): update condicional sobre
   // PENDING. Si la compra ya fue pagada por un webhook que llegó justo antes,
   // no se pisa y se devuelve el estado real.
+  //
+  // Igual que en getQrCheckout: se filtra por eventId + origin ADMIN_QR, no
+  // sólo por id. Sin ese filtro, este endpoint (pensado para cancelar el QR
+  // que genera el admin) podía cancelar por id una compra PENDING del sitio
+  // público (flujo pay()); si a esa compra le llegara después un pago
+  // aprobado, quedaría dinero capturado sin tickets.
   async cancelQrCheckout(
+    eventId: string,
     purchaseId: string,
   ): Promise<{ status: EventPurchaseStatus }> {
     const purchase = await this.purchaseRepository.findOne({
-      where: { id: purchaseId },
+      where: {
+        id: purchaseId,
+        eventId,
+        origin: EventPurchaseOrigin.ADMIN_QR,
+      },
     });
     if (!purchase) {
       throw new NotFoundException('Compra no encontrada');
@@ -307,7 +330,7 @@ export class PaymentsService {
     const outcome = this.classifyOutcome(payment.status);
 
     if (outcome === 'approved') {
-      const result = await this.fulfill(payment.externalReference);
+      const result = await this.fulfill(payment.externalReference, paymentId);
       if (result === null) {
         // fulfill devuelve null cuando el claim condicional falló. Eso pasa
         // por motivos muy distintos: (a) otro proceso ya entregó (la compra
@@ -315,11 +338,20 @@ export class PaymentsService {
         // concurrente falló y la revirtió → también normal, se espera el
         // próximo webhook; (c) la compra está en un estado terminal que no es
         // PAID → hay un cobro capturado por MP que nunca va a producir
-        // tickets, y eso necesita intervención humana.
+        // tickets, y eso necesita intervención humana; (d) la compra está
+        // PAID pero con un mpPaymentId DISTINTO al de este webhook → mismo
+        // caso que (c) pero con un matiz: MP no invalida la Preference tras
+        // el primer pago aprobado, así que el mismo QR (visible ~15 min en
+        // el mostrador) se puede escanear y pagar dos veces con dos pagos
+        // distintos, y el segundo también necesita intervención humana.
         //
         // Se comparan estados terminales explícitos y NO `!== PAID`: PENDING
         // es transitorio y alertar sobre él produce falsas alarmas que
-        // entrenan a los admin a ignorar las reales.
+        // entrenan a los admin a ignorar las reales. El caso (a) normal
+        // (MP reintenta la entrega del MISMO webhook varias veces) se
+        // distingue del (d) comparando el paymentId contra el mpPaymentId ya
+        // persistido: mismo id → reintento normal, no alertar; id distinto →
+        // pago duplicado real.
         const purchase = await this.purchaseRepository.findOne({
           where: { id: payment.externalReference },
         });
@@ -327,7 +359,11 @@ export class PaymentsService {
           purchase?.status === EventPurchaseStatus.CANCELLED ||
           purchase?.status === EventPurchaseStatus.EXPIRED ||
           purchase?.status === EventPurchaseStatus.REJECTED;
-        if (purchase && isTerminalWithoutTickets) {
+        const isDuplicatePayment =
+          purchase?.status === EventPurchaseStatus.PAID &&
+          !!purchase.mpPaymentId &&
+          purchase.mpPaymentId !== paymentId;
+        if (purchase && (isTerminalWithoutTickets || isDuplicatePayment)) {
           await this.alertPaymentWithoutTickets(purchase, paymentId);
         }
       }
@@ -361,6 +397,7 @@ export class PaymentsService {
   // duplicados.
   private async fulfill(
     purchaseId: string,
+    mpPaymentId?: string,
   ): Promise<PublicPurchaseResult | null> {
     const purchase = await this.purchaseRepository.findOne({
       where: { id: purchaseId },
@@ -376,6 +413,17 @@ export class PaymentsService {
       // Otro proceso ya reclamó (o la compra no estaba PENDING). No hacemos
       // nada: ni tickets ni correo.
       return null;
+    }
+
+    // Se persiste el id del pago de MP que ganó la carrera. Sin esto no hay
+    // forma de reconciliar la compra ante un reembolso/contracargo, y
+    // tampoco de distinguir (en handleWebhook, cuando el claim falla) un
+    // segundo pago real sobre el mismo QR de un simple reintento del mismo
+    // webhook. pay() ya escribe mpPaymentId por su cuenta antes de llamar a
+    // fulfill (ahí sí se conoce sincrónicamente el resultado del charge), así
+    // que acá sólo se escribe cuando viene explícito: el camino webhook.
+    if (mpPaymentId !== undefined) {
+      await this.purchaseRepository.update(purchaseId, { mpPaymentId });
     }
 
     let result: PublicPurchaseResult;
@@ -490,14 +538,26 @@ export class PaymentsService {
     }
   }
 
-  // Cobro capturado sin tickets emitidos: se avisa a los admin por correo
-  // porque la resolución es manual (reembolsar en MP o emitir a mano).
+  // Cobro capturado que no coincide con lo esperado: se avisa a los admin
+  // por correo porque la resolución es manual (reembolsar en MP y/o emitir
+  // tickets a mano). Cubre dos casos bien distintos, discriminados por el
+  // estado de la compra:
+  // - PAID: es un pago DUPLICADO sobre un QR ya cobrado (MP no invalida la
+  //   Preference tras el primer pago aprobado). Los tickets YA existen,
+  //   emitidos por el primer pago; sólo falta gestionar el reembolso del
+  //   cobro de más.
+  // - Cualquier estado terminal (CANCELLED/EXPIRED/REJECTED): es el caso
+  //   original, el cobro se aprobó pero nunca se emitieron tickets.
   private async alertPaymentWithoutTickets(
     purchase: EventPurchase,
     mpPaymentId: string,
   ): Promise<void> {
+    const isDuplicate = purchase.status === EventPurchaseStatus.PAID;
+
     this.logger.error(
-      `Pago ${mpPaymentId} aprobado sobre la compra ${purchase.id} en estado ${purchase.status}: cobro capturado SIN tickets emitidos.`,
+      isDuplicate
+        ? `Pago ${mpPaymentId} aprobado sobre la compra ${purchase.id}, que YA estaba PAID (pago original: ${purchase.mpPaymentId}): cobro DUPLICADO sobre el mismo QR, tickets ya emitidos por el primer pago.`
+        : `Pago ${mpPaymentId} aprobado sobre la compra ${purchase.id} en estado ${purchase.status}: cobro capturado SIN tickets emitidos.`,
     );
 
     const recipients = (process.env.PAYMENT_ALERTS_EMAIL ?? '')
@@ -506,11 +566,26 @@ export class PaymentsService {
       .filter((address) => address.length > 0);
     if (recipients.length === 0) return;
 
-    try {
-      await this.mailer.send({
-        to: recipients.join(','),
-        subject: `[Alerta] Pago aprobado sin tickets — compra ${purchase.id}`,
-        html: `
+    const subject = isDuplicate
+      ? `[Alerta] Pago duplicado sobre QR ya pagado — compra ${purchase.id}`
+      : `[Alerta] Pago aprobado sin tickets — compra ${purchase.id}`;
+
+    const html = isDuplicate
+      ? `
+          <p>Mercado Pago aprobó un <b>segundo pago</b> para una compra que ya estaba pagada.
+          Los tickets ya fueron emitidos con el primer pago; este cobro es un duplicado
+          (el mismo QR se pagó dos veces) y no generó tickets nuevos.</p>
+          <ul>
+            <li>Compra: ${purchase.id}</li>
+            <li>Pago original en Mercado Pago: ${purchase.mpPaymentId}</li>
+            <li>Pago duplicado en Mercado Pago: ${mpPaymentId}</li>
+            <li>Evento: ${purchase.eventId}</li>
+            <li>Monto: ${purchase.total}</li>
+            <li>Comprador: ${purchase.buyerEmail}</li>
+          </ul>
+          <p>Hay que resolverlo a mano: reembolsar el pago duplicado en Mercado Pago.</p>
+        `
+      : `
           <p>Mercado Pago aprobó un pago para una compra que ya no estaba pendiente.
           El cobro fue capturado pero <b>no se emitieron tickets</b>.</p>
           <ul>
@@ -522,8 +597,10 @@ export class PaymentsService {
             <li>Comprador: ${purchase.buyerEmail}</li>
           </ul>
           <p>Hay que resolverlo a mano: reembolsar en Mercado Pago o emitir los tickets.</p>
-        `,
-      });
+        `;
+
+    try {
+      await this.mailer.send({ to: recipients.join(','), subject, html });
     } catch (err) {
       // El webhook debe responder 200 igual: si falla el correo de alerta y
       // propagáramos, MP reintentaría el webhook en loop sin arreglar nada.
