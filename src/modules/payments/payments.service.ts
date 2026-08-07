@@ -307,7 +307,20 @@ export class PaymentsService {
     const outcome = this.classifyOutcome(payment.status);
 
     if (outcome === 'approved') {
-      await this.fulfill(payment.externalReference);
+      const result = await this.fulfill(payment.externalReference);
+      if (result === null) {
+        // fulfill devuelve null cuando el claim condicional falló. Eso pasa
+        // por dos motivos muy distintos: (a) otro proceso ya entregó (la
+        // compra quedó PAID) → normal, nada que hacer; (b) la compra estaba
+        // CANCELLED o EXPIRED → hay un cobro capturado por MP que nunca va a
+        // producir tickets, y eso necesita intervención humana.
+        const purchase = await this.purchaseRepository.findOne({
+          where: { id: payment.externalReference },
+        });
+        if (purchase && purchase.status !== EventPurchaseStatus.PAID) {
+          await this.alertPaymentWithoutTickets(purchase, paymentId);
+        }
+      }
       return;
     }
 
@@ -464,6 +477,47 @@ export class PaymentsService {
       // El cobro ya fue aprobado y los tickets ya existen: un correo caído
       // no debe hacer fallar la request ni revertir nada. Se registra y sigue.
       this.logger.error(`Fallo enviando correo de tickets: ${String(err)}`);
+    }
+  }
+
+  // Cobro capturado sin tickets emitidos: se avisa a los admin por correo
+  // porque la resolución es manual (reembolsar en MP o emitir a mano).
+  private async alertPaymentWithoutTickets(
+    purchase: EventPurchase,
+    mpPaymentId: string,
+  ): Promise<void> {
+    this.logger.error(
+      `Pago ${mpPaymentId} aprobado sobre la compra ${purchase.id} en estado ${purchase.status}: cobro capturado SIN tickets emitidos.`,
+    );
+
+    const recipients = (process.env.PAYMENT_ALERTS_EMAIL ?? '')
+      .split(',')
+      .map((address) => address.trim())
+      .filter((address) => address.length > 0);
+    if (recipients.length === 0) return;
+
+    try {
+      await this.mailer.send({
+        to: recipients.join(','),
+        subject: `[Alerta] Pago aprobado sin tickets — compra ${purchase.id}`,
+        html: `
+          <p>Mercado Pago aprobó un pago para una compra que ya no estaba pendiente.
+          El cobro fue capturado pero <b>no se emitieron tickets</b>.</p>
+          <ul>
+            <li>Compra: ${purchase.id}</li>
+            <li>Estado de la compra: ${purchase.status}</li>
+            <li>Pago en Mercado Pago: ${mpPaymentId}</li>
+            <li>Evento: ${purchase.eventId}</li>
+            <li>Monto: ${purchase.total}</li>
+            <li>Comprador: ${purchase.buyerEmail}</li>
+          </ul>
+          <p>Hay que resolverlo a mano: reembolsar en Mercado Pago o emitir los tickets.</p>
+        `,
+      });
+    } catch (err) {
+      // El webhook debe responder 200 igual: si falla el correo de alerta y
+      // propagáramos, MP reintentaría el webhook en loop sin arreglar nada.
+      this.logger.error(`Fallo enviando alerta de pago sin tickets: ${String(err)}`);
     }
   }
 

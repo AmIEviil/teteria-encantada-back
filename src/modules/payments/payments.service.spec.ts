@@ -988,4 +988,122 @@ describe('PaymentsService', () => {
       expect(realtime.emitEventPurchaseChanged).not.toHaveBeenCalled();
     });
   });
+
+  describe('alerta de pago aprobado sin tickets', () => {
+    beforeEach(() => {
+      process.env.PAYMENT_ALERTS_EMAIL = 'admin@teteria.cl, jefe@teteria.cl';
+    });
+
+    afterEach(() => {
+      delete process.env.PAYMENT_ALERTS_EMAIL;
+    });
+
+    it('webhook approved sobre una compra CANCELLED no entrega tickets y alerta al admin', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.CANCELLED,
+        total: 10000,
+        buyerEmail: 'b@t.cl',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp1');
+
+      expect(events.createPublicTickets).not.toHaveBeenCalled();
+      expect(purchaseRepo.getValue()?.status).toBe(
+        EventPurchaseStatus.CANCELLED,
+      );
+      expect(mailer.send).toHaveBeenCalledTimes(1);
+      const mail = mailer.send.mock.calls[0][0];
+      expect(mail.to).toBe('admin@teteria.cl,jefe@teteria.cl');
+      expect(mail.subject).toContain('p1');
+      expect(mail.html).toContain('mp1');
+    });
+
+    it('webhook approved sobre una compra EXPIRED también alerta', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.EXPIRED,
+        total: 10000,
+        buyerEmail: 'b@t.cl',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp1');
+
+      expect(mailer.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('no alerta cuando la compra ya estaba PAID: otro proceso la entregó', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PAID,
+        total: 10000,
+        buyerEmail: 'b@t.cl',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp1');
+
+      expect(mailer.send).not.toHaveBeenCalled();
+    });
+
+    it('sin PAYMENT_ALERTS_EMAIL no intenta enviar correo', async () => {
+      delete process.env.PAYMENT_ALERTS_EMAIL;
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.CANCELLED,
+        total: 10000,
+        buyerEmail: 'b@t.cl',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp1');
+
+      expect(mailer.send).not.toHaveBeenCalled();
+    });
+
+    it('un correo de alerta caído no hace fallar el webhook', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.CANCELLED,
+        total: 10000,
+        buyerEmail: 'b@t.cl',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+      });
+      mailer.send.mockRejectedValueOnce(new Error('SMTP caído'));
+      const svc = build();
+
+      await expect(svc.handleWebhook('mp1')).resolves.toBeUndefined();
+    });
+  });
 });
