@@ -4,6 +4,7 @@ import { EventPurchase } from '../events/entities/event-purchase.entity';
 import { EventsModule } from '../events/events.module';
 import { MailerModule } from '../mailer/mailer.module';
 import { TicketsPdfModule } from '../tickets-pdf/tickets-pdf.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { MercadoPagoService } from './mercadopago.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
@@ -14,6 +15,7 @@ import { PaymentsService } from './payments.service';
     EventsModule,
     MailerModule,
     TicketsPdfModule,
+    RealtimeModule,
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService, MercadoPagoService],

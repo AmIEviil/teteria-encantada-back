@@ -23,6 +23,7 @@ const makePurchaseRepo = (initial?: Record<string, unknown>) => {
       return value;
     }),
     findOne: jest.fn(async () => (value ? { ...value } : null)),
+    find: jest.fn(async () => (value ? [{ ...value }] : [])),
     update: jest.fn(
       async (
         criteria: Record<string, unknown> | string,
@@ -89,11 +90,12 @@ describe('PaymentsService', () => {
     }),
     getTicketSequences: jest.fn().mockResolvedValue(new Map([['t1', 1]])),
   };
-  const mp = { charge: jest.fn(), getPayment: jest.fn() };
+  const mp = { charge: jest.fn(), getPayment: jest.fn(), createPreference: jest.fn() };
   const mailer = { send: jest.fn().mockResolvedValue(undefined) };
   const pdf = {
     buildTicketsPdf: jest.fn().mockResolvedValue(Buffer.from('PDF')),
   };
+  const realtime = { emitEventPurchaseChanged: jest.fn() };
 
   const build = () =>
     new PaymentsService(
@@ -102,6 +104,7 @@ describe('PaymentsService', () => {
       mp as any,
       mailer as any,
       pdf as any,
+      realtime as any,
     );
 
   const basePayInput = {
@@ -770,6 +773,105 @@ describe('PaymentsService', () => {
       expect(wins.length).toBe(1);
       expect(events.createPublicTickets).toHaveBeenCalledTimes(1);
       expect(mailer.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('createQrCheckout', () => {
+    const qrInput = {
+      buyerEmail: 'b@t.cl',
+      items: [
+        {
+          ticketTypeId: 'tt1',
+          attendeeFirstName: 'A',
+          attendeeLastName: 'B',
+          attendanceDate: new Date('2026-08-01'),
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      process.env.MP_ACCESS_TOKEN = 'test-token';
+      mp.createPreference.mockResolvedValue({
+        id: 'pref-1',
+        initPoint: 'https://mp.test/checkout/pref-1',
+      });
+    });
+
+    it('persiste la compra PENDING con origen ADMIN_QR, expiración y el total cotizado', async () => {
+      const svc = build();
+
+      const res = await svc.createQrCheckout('e1', qrInput);
+
+      expect(res.checkoutUrl).toBe('https://mp.test/checkout/pref-1');
+      expect(res.total).toBe(10000);
+      expect(res.status).toBe(EventPurchaseStatus.PENDING);
+
+      const saved = purchaseRepo.getValue();
+      expect(saved?.status).toBe(EventPurchaseStatus.PENDING);
+      expect(saved?.origin).toBe('ADMIN_QR');
+      expect(saved?.total).toBe(10000);
+      expect(saved?.checkoutUrl).toBe('https://mp.test/checkout/pref-1');
+      expect(saved?.mpPreferenceId).toBe('pref-1');
+      // No se emiten tickets al generar el QR: sólo al aprobarse el pago.
+      expect(events.createPublicTickets).not.toHaveBeenCalled();
+    });
+
+    it('la ventana de expiración es de 15 minutos', async () => {
+      const svc = build();
+      const before = Date.now();
+
+      const res = await svc.createQrCheckout('e1', qrInput);
+
+      const ttl = new Date(res.expiresAt).getTime() - before;
+      expect(ttl).toBeGreaterThan(14 * 60 * 1000);
+      expect(ttl).toBeLessThanOrEqual(15 * 60 * 1000 + 1000);
+    });
+
+    it('external_reference de la preferencia es el id de la compra', async () => {
+      const svc = build();
+
+      const res = await svc.createQrCheckout('e1', qrInput);
+
+      const prefArgs = mp.createPreference.mock.calls[0][0];
+      expect(prefArgs.externalReference).toBe(res.purchaseId);
+      expect(prefArgs.payerEmail).toBe('b@t.cl');
+    });
+
+    it('responde 503 si falta MP_ACCESS_TOKEN, sin tocar la base', async () => {
+      delete process.env.MP_ACCESS_TOKEN;
+      const svc = build();
+
+      await expect(svc.createQrCheckout('e1', qrInput)).rejects.toThrow(
+        /Mercado Pago/i,
+      );
+      expect(purchaseRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getQrCheckout', () => {
+    it('devuelve el estado actual de la compra', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PAID,
+        total: 10000,
+        checkoutUrl: 'https://mp.test/checkout/pref-1',
+        expiresAt: new Date('2026-08-06T21:15:00.000Z'),
+      });
+      const svc = build();
+
+      const res = await svc.getQrCheckout('p1');
+
+      expect(res.status).toBe(EventPurchaseStatus.PAID);
+      expect(res.total).toBe(10000);
+      expect(res.checkoutUrl).toBe('https://mp.test/checkout/pref-1');
+      expect(res.expiresAt).toBe('2026-08-06T21:15:00.000Z');
+    });
+
+    it('lanza si la compra no existe', async () => {
+      purchaseRepo = makePurchaseRepo();
+      const svc = build();
+
+      await expect(svc.getQrCheckout('nope')).rejects.toThrow(/no encontrada/i);
     });
   });
 });

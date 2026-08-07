@@ -1,9 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   EventPurchase,
   EventPurchaseItemSnapshot,
+  EventPurchaseOrigin,
   EventPurchaseStatus,
 } from '../events/entities/event-purchase.entity';
 import {
@@ -18,6 +24,7 @@ import {
   PdfTicketInput,
 } from '../tickets-pdf/tickets-pdf.service';
 import { MercadoPagoService, MpItem } from './mercadopago.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface PayEventInput {
   buyerEmail: string;
@@ -36,6 +43,27 @@ export interface PayEventResult {
   purchase: PublicPurchaseResult | null;
 }
 
+export interface QrCheckoutInput {
+  buyerEmail: string;
+  items: PublicPurchaseItemInput[];
+}
+
+export interface QrCheckoutResult {
+  purchaseId: string;
+  checkoutUrl: string;
+  total: number;
+  expiresAt: string;
+  status: EventPurchaseStatus;
+}
+
+export interface QrCheckoutStatusResult {
+  purchaseId: string;
+  status: EventPurchaseStatus;
+  total: number;
+  checkoutUrl: string | null;
+  expiresAt: string | null;
+}
+
 type PaymentOutcome = 'approved' | 'pending' | 'rejected';
 
 @Injectable()
@@ -46,6 +74,10 @@ export class PaymentsService {
   // agrupa por tipo y los asistentes se mueven a la description de cada línea.
   private static readonly MAX_UNGROUPED_MP_ITEMS = 10;
 
+  // Ventana de vida del QR. Suficiente para que el cliente saque el teléfono,
+  // escanee y complete el pago aunque el banco le pida autenticación.
+  private static readonly QR_CHECKOUT_TTL_MS = 15 * 60 * 1000;
+
   constructor(
     @InjectRepository(EventPurchase)
     private readonly purchaseRepository: Repository<EventPurchase>,
@@ -53,6 +85,7 @@ export class PaymentsService {
     private readonly mercadoPago: MercadoPagoService,
     private readonly mailer: MailerService,
     private readonly ticketsPdf: TicketsPdfService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   async pay(eventId: string, input: PayEventInput): Promise<PayEventResult> {
@@ -126,6 +159,82 @@ export class PaymentsService {
       status: 'rejected',
       statusDetail: charge.statusDetail,
       purchase: null,
+    };
+  }
+
+  // Genera una preferencia de Checkout Pro y deja la compra PENDING. No se
+  // valida disponibilidad ni se reserva cupo: por decisión de producto el cupo
+  // se ocupa recién al aprobarse el pago (ver fulfill, allowOversell).
+  async createQrCheckout(
+    eventId: string,
+    input: QrCheckoutInput,
+  ): Promise<QrCheckoutResult> {
+    if (!process.env.MP_ACCESS_TOKEN) {
+      throw new ServiceUnavailableException(
+        'Mercado Pago no está configurado: falta MP_ACCESS_TOKEN',
+      );
+    }
+
+    const quote = await this.eventsService.quotePublicPurchaseDetailed(
+      eventId,
+      input.items,
+    );
+    const expiresAt = new Date(
+      Date.now() + PaymentsService.QR_CHECKOUT_TTL_MS,
+    );
+
+    const purchase = await this.purchaseRepository.save(
+      this.purchaseRepository.create({
+        eventId,
+        buyerEmail: input.buyerEmail,
+        itemsSnapshot: input.items.map((i) => this.toSnapshot(i)),
+        total: quote.total,
+        status: EventPurchaseStatus.PENDING,
+        origin: EventPurchaseOrigin.ADMIN_QR,
+        expiresAt,
+      }),
+    );
+
+    // Si esto falla, la compra queda PENDING sin checkoutUrl y el cron la
+    // expira en 15 minutos. No se borra acá para no perder el rastro.
+    const preference = await this.mercadoPago.createPreference({
+      items: this.buildMpItems(quote.lines, purchase.itemsSnapshot),
+      payerEmail: input.buyerEmail,
+      externalReference: purchase.id,
+      expiresAt,
+    });
+
+    await this.purchaseRepository.update(purchase.id, {
+      mpPreferenceId: preference.id,
+      checkoutUrl: preference.initPoint,
+    });
+
+    return {
+      purchaseId: purchase.id,
+      checkoutUrl: preference.initPoint,
+      total: quote.total,
+      expiresAt: expiresAt.toISOString(),
+      status: EventPurchaseStatus.PENDING,
+    };
+  }
+
+  // Respaldo del canal de tiempo real: si el socket estaba caído cuando llegó
+  // el webhook, el modal consulta acá al montar el panel.
+  async getQrCheckout(purchaseId: string): Promise<QrCheckoutStatusResult> {
+    const purchase = await this.purchaseRepository.findOne({
+      where: { id: purchaseId },
+    });
+    if (!purchase) {
+      throw new NotFoundException('Compra no encontrada');
+    }
+    return {
+      purchaseId: purchase.id,
+      status: purchase.status,
+      total: purchase.total,
+      checkoutUrl: purchase.checkoutUrl,
+      expiresAt: purchase.expiresAt
+        ? new Date(purchase.expiresAt).toISOString()
+        : null,
     };
   }
 
