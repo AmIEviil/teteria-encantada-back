@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 
 // Líneas que MP muestra como detalle del pago en el panel del comercio
 // (additional_info.items). La suma de quantity * unitPrice debe dar el monto
@@ -34,6 +34,19 @@ export interface MpChargeResult {
   statusDetail: string;
 }
 
+export interface MpPreferenceInput {
+  items: MpItem[];
+  payerEmail: string;
+  externalReference: string;
+  expiresAt: Date;
+}
+
+export interface MpPreferenceResult {
+  id: string;
+  // URL de pago de Checkout Pro; es lo que se codifica en el QR.
+  initPoint: string;
+}
+
 @Injectable()
 export class MercadoPagoService {
   private payment(): Payment {
@@ -41,6 +54,19 @@ export class MercadoPagoService {
       accessToken: process.env.MP_ACCESS_TOKEN ?? '',
     });
     return new Payment(client);
+  }
+
+  private preference(): Preference {
+    const client = new MercadoPagoConfig({
+      accessToken: process.env.MP_ACCESS_TOKEN ?? '',
+    });
+    return new Preference(client);
+  }
+
+  // MP exige ISO 8601 con offset numérico en las fechas de expiración y
+  // rechaza el sufijo 'Z' que produce toISOString().
+  private toMpDate(date: Date): string {
+    return date.toISOString().replace('Z', '-00:00');
   }
 
   async charge(input: MpChargeInput): Promise<MpChargeResult> {
@@ -88,6 +114,45 @@ export class MercadoPagoService {
       status: res.status ?? 'unknown',
       statusDetail: res.status_detail ?? '',
       externalReference: res.external_reference ?? null,
+    };
+  }
+
+  async createPreference(
+    input: MpPreferenceInput,
+  ): Promise<MpPreferenceResult> {
+    const resultUrl = `${process.env.FRONTEND_URL ?? ''}/publico/pago/resultado`;
+    const res = await this.preference().create({
+      body: {
+        items: input.items.map((i) => ({
+          id: i.id,
+          title: i.title,
+          quantity: i.quantity,
+          unit_price: i.unitPrice,
+          description: i.description,
+          currency_id: 'CLP',
+        })),
+        payer: { email: input.payerEmail },
+        external_reference: input.externalReference,
+        notification_url: `${process.env.PUBLIC_API_URL ?? ''}/public/mercadopago/webhook`,
+        back_urls: {
+          success: resultUrl,
+          pending: resultUrl,
+          failure: resultUrl,
+        },
+        // MP rechaza la preferencia completa si auto_return apunta a una URL
+        // que no puede alcanzar (típico en desarrollo con localhost).
+        auto_return: resultUrl.startsWith('https://') ? 'approved' : undefined,
+        // Sin estados intermedios: en cobro presencial un 'in_process' deja al
+        // operador sin saber si entregar o no.
+        binary_mode: true,
+        expires: true,
+        expiration_date_from: this.toMpDate(new Date()),
+        expiration_date_to: this.toMpDate(input.expiresAt),
+      },
+    });
+    return {
+      id: String(res.id),
+      initPoint: res.init_point ?? '',
     };
   }
 }

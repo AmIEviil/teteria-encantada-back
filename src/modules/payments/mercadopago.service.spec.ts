@@ -1,8 +1,10 @@
 const create = jest.fn();
 const get = jest.fn();
+const preferenceCreate = jest.fn();
 jest.mock('mercadopago', () => ({
   MercadoPagoConfig: jest.fn(),
   Payment: jest.fn().mockImplementation(() => ({ create, get })),
+  Preference: jest.fn().mockImplementation(() => ({ create: preferenceCreate })),
 }));
 
 import { MercadoPagoService } from './mercadopago.service';
@@ -10,8 +12,11 @@ import { MercadoPagoService } from './mercadopago.service';
 describe('MercadoPagoService', () => {
   beforeEach(() => {
     process.env.MP_ACCESS_TOKEN = 'test-token';
+    process.env.PUBLIC_API_URL = 'https://api.test.cl';
+    process.env.FRONTEND_URL = 'https://web.test.cl';
     create.mockReset();
     get.mockReset();
+    preferenceCreate.mockReset();
   });
 
   it('charge mapea la respuesta de MP', async () => {
@@ -139,5 +144,94 @@ describe('MercadoPagoService', () => {
       statusDetail: '',
       externalReference: null,
     });
+  });
+
+  const preferenceInput = () => ({
+    items: [
+      {
+        id: 'tt1',
+        title: 'VIP - Ana Pérez - 01/08/2026 10:00',
+        quantity: 1,
+        unitPrice: 10000,
+      },
+    ],
+    payerEmail: 'a@b.cl',
+    externalReference: 'purchase-1',
+    expiresAt: new Date('2026-08-06T21:15:00.000Z'),
+  });
+
+  it('createPreference mapea la respuesta de MP', async () => {
+    preferenceCreate.mockResolvedValue({
+      id: 'pref-1',
+      init_point: 'https://mp.test/checkout/pref-1',
+    });
+    const svc = new MercadoPagoService();
+
+    const res = await svc.createPreference(preferenceInput());
+
+    expect(res).toEqual({
+      id: 'pref-1',
+      initPoint: 'https://mp.test/checkout/pref-1',
+    });
+  });
+
+  it('createPreference arma el body que necesita el webhook y el QR', async () => {
+    preferenceCreate.mockResolvedValue({
+      id: 'pref-1',
+      init_point: 'https://mp.test/checkout/pref-1',
+    });
+    const svc = new MercadoPagoService();
+
+    await svc.createPreference(preferenceInput());
+
+    const body = preferenceCreate.mock.calls[0][0].body;
+
+    // external_reference es lo que handleWebhook usa para encontrar la compra.
+    expect(body.external_reference).toBe('purchase-1');
+    expect(body.notification_url).toBe(
+      'https://api.test.cl/public/mercadopago/webhook',
+    );
+    expect(body.back_urls.success).toBe(
+      'https://web.test.cl/publico/pago/resultado',
+    );
+    expect(body.back_urls.pending).toBe(body.back_urls.success);
+    expect(body.back_urls.failure).toBe(body.back_urls.success);
+    expect(body.auto_return).toBe('approved');
+    expect(body.binary_mode).toBe(true);
+    expect(body.payer.email).toBe('a@b.cl');
+    expect(body.items[0].currency_id).toBe('CLP');
+    expect(body.items[0].unit_price).toBe(10000);
+  });
+
+  it('createPreference marca la expiración con offset numérico', async () => {
+    preferenceCreate.mockResolvedValue({
+      id: 'pref-1',
+      init_point: 'https://mp.test/checkout/pref-1',
+    });
+    const svc = new MercadoPagoService();
+
+    await svc.createPreference(preferenceInput());
+
+    const body = preferenceCreate.mock.calls[0][0].body;
+    expect(body.expires).toBe(true);
+    // MP rechaza el sufijo 'Z': exige offset numérico.
+    expect(body.expiration_date_to).toBe('2026-08-06T21:15:00.000-00:00');
+    expect(body.expiration_date_from).toMatch(/-00:00$/);
+  });
+
+  it('createPreference omite auto_return cuando el front no es https', async () => {
+    process.env.FRONTEND_URL = 'http://localhost:5173';
+    preferenceCreate.mockResolvedValue({
+      id: 'pref-1',
+      init_point: 'https://mp.test/checkout/pref-1',
+    });
+    const svc = new MercadoPagoService();
+
+    await svc.createPreference(preferenceInput());
+
+    // MP rechaza la preferencia entera si auto_return apunta a una URL no
+    // pública; en desarrollo se prefiere no volver automáticamente.
+    const body = preferenceCreate.mock.calls[0][0].body;
+    expect(body.auto_return).toBeUndefined();
   });
 });
