@@ -8,6 +8,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { MercadoPagoService } from './mercadopago.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { QrCheckoutController } from './qr-checkout.controller';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { PaymentsService } from './payments.service';
     TicketsPdfModule,
     RealtimeModule,
   ],
-  controllers: [PaymentsController],
+  controllers: [PaymentsController, QrCheckoutController],
   providers: [PaymentsService, MercadoPagoService],
 })
 export class PaymentsModule {}
