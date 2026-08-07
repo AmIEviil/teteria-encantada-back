@@ -12,11 +12,6 @@ async function bootstrap() {
   app.use(json({ limit: requestBodyLimit }));
   app.use(urlencoded({ extended: true, limit: requestBodyLimit }));
 
-  app.enableCors({
-    origin: true,
-    credentials: true,
-  });
-
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

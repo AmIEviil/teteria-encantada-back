@@ -21,7 +21,12 @@ import { PaymentsModule } from './modules/payments/payments.module';
 @Module({
   imports: [
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60000, limit: 100 }],
+      throttlers: [
+        {
+          ttl: Number(process.env.THROTTLE_TTL ?? 60000),
+          limit: Number(process.env.THROTTLE_LIMIT ?? 100),
+        },
+      ],
     }),
     TypeOrmModule.forRoot({
       type: 'postgres',
