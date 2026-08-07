@@ -310,14 +310,24 @@ export class PaymentsService {
       const result = await this.fulfill(payment.externalReference);
       if (result === null) {
         // fulfill devuelve null cuando el claim condicional falló. Eso pasa
-        // por dos motivos muy distintos: (a) otro proceso ya entregó (la
-        // compra quedó PAID) → normal, nada que hacer; (b) la compra estaba
-        // CANCELLED o EXPIRED → hay un cobro capturado por MP que nunca va a
-        // producir tickets, y eso necesita intervención humana.
+        // por motivos muy distintos: (a) otro proceso ya entregó (la compra
+        // quedó PAID) → normal; (b) la compra sigue PENDING porque un fulfill
+        // concurrente falló y la revirtió → también normal, se espera el
+        // próximo webhook; (c) la compra está en un estado terminal que no es
+        // PAID → hay un cobro capturado por MP que nunca va a producir
+        // tickets, y eso necesita intervención humana.
+        //
+        // Se comparan estados terminales explícitos y NO `!== PAID`: PENDING
+        // es transitorio y alertar sobre él produce falsas alarmas que
+        // entrenan a los admin a ignorar las reales.
         const purchase = await this.purchaseRepository.findOne({
           where: { id: payment.externalReference },
         });
-        if (purchase && purchase.status !== EventPurchaseStatus.PAID) {
+        const isTerminalWithoutTickets =
+          purchase?.status === EventPurchaseStatus.CANCELLED ||
+          purchase?.status === EventPurchaseStatus.EXPIRED ||
+          purchase?.status === EventPurchaseStatus.REJECTED;
+        if (purchase && isTerminalWithoutTickets) {
           await this.alertPaymentWithoutTickets(purchase, paymentId);
         }
       }

@@ -1046,6 +1046,29 @@ describe('PaymentsService', () => {
       expect(mailer.send).toHaveBeenCalledTimes(1);
     });
 
+    it('no alerta cuando la compra sigue PENDING: un fulfill concurrente la revirtió y habrá otro webhook', async () => {
+      purchaseRepo = makePurchaseRepo({
+        eventId: 'e1',
+        status: EventPurchaseStatus.PENDING,
+        total: 10000,
+        buyerEmail: 'b@t.cl',
+      });
+      // El claim de fulfill falla (affected 0) pero la fila sigue PENDING:
+      // es el caso transitorio, no un cobro huérfano.
+      purchaseRepo.update.mockImplementation(async () => ({ affected: 0 }));
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp1');
+
+      expect(mailer.send).not.toHaveBeenCalled();
+    });
+
     it('no alerta cuando la compra ya estaba PAID: otro proceso la entregó', async () => {
       purchaseRepo = makePurchaseRepo({
         eventId: 'e1',
