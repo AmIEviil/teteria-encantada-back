@@ -77,6 +77,7 @@ describe('PaymentsService', () => {
     findOne: jest.fn().mockResolvedValue({
       id: 'e1',
       title: 'Ev',
+      startsAt: new Date('2026-08-01T10:00:00Z'),
       ticketTypes: [
         {
           id: 'tt1',
