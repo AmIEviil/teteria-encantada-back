@@ -84,18 +84,24 @@ export class EventPurchasesService {
       throw new NotFoundException('Compra no encontrada');
     }
 
+    // La condicion de pagador se arma en JS: un parametro nulo usado en
+    // "IS NOT NULL" hace que Postgres no pueda inferir su tipo.
+    const hasPayer = !!purchase.mpPayerId;
+    const otherParams: Record<string, string> = {
+      id: purchase.id,
+      email: purchase.buyerEmail,
+    };
+    if (hasPayer) otherParams.payerId = purchase.mpPayerId as string;
+    const otherWhere =
+      'p.id <> :id AND (lower(p."buyerEmail") = lower(:email)' +
+      (hasPayer ? ' OR p."mpPayerId" = :payerId)' : ')');
+
     const [ticketTypes, others] = await Promise.all([
       this.ticketTypeRepo.find({ where: { eventId: purchase.eventId } }),
       this.purchaseRepo
         .createQueryBuilder('p')
-        .where(
-          'p.id <> :id AND (lower(p."buyerEmail") = lower(:email) OR (:payerId IS NOT NULL AND p."mpPayerId" = :payerId))',
-        )
-        .setParameters({
-          id: purchase.id,
-          email: purchase.buyerEmail,
-          payerId: purchase.mpPayerId ?? null,
-        })
+        .where(otherWhere)
+        .setParameters(otherParams)
         .orderBy('p.createdAt', 'DESC')
         .getMany(),
     ]);

@@ -250,17 +250,30 @@ describe('EventPurchasesService', () => {
       });
     });
 
-    it('con mpPayerId null pasa payerId null (no compara por pagador)', async () => {
+    it('con mpPayerId null no compara por pagador ni pasa payerId', async () => {
       purchaseRepo.findOne.mockResolvedValue(
         buildPurchase({ mpPayerId: null }),
       );
       await service.getDetail('p-1');
-      expect(qb.setParameters).toHaveBeenCalledWith(
-        expect.objectContaining({ payerId: null }),
-      );
       const where = qb.where.mock.calls[0][0] as string;
-      expect(where).toContain(':payerId IS NOT NULL');
+      expect(where).not.toContain('mpPayerId');
+      expect(where).not.toContain(':payerId');
       expect(where).toContain('lower(p."buyerEmail") = lower(:email)');
+      expect(qb.setParameters).toHaveBeenCalledWith({
+        id: 'p-1',
+        email: 'ana@mail.cl',
+      });
+    });
+
+    it('con mpPayerId agrega la clausula de pagador y el parametro', async () => {
+      purchaseRepo.findOne.mockResolvedValue(buildPurchase());
+      await service.getDetail('p-1');
+      const where = qb.where.mock.calls[0][0] as string;
+      expect(where).toContain('OR p."mpPayerId" = :payerId');
+      expect(where).not.toContain('IS NOT NULL');
+      expect(qb.setParameters).toHaveBeenCalledWith(
+        expect.objectContaining({ payerId: 'payer-1' }),
+      );
     });
   });
 
