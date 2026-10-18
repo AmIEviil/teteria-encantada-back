@@ -28,7 +28,7 @@ describe('ImagesService', () => {
     size: 4,
   };
 
-  it('upload sube a S3 y persiste la fila Image', async () => {
+  it('upload sube a disco y persiste la fila Image', async () => {
     storage.publicUrl.mockReturnValue('https://cdn/x.png');
     repo.create.mockImplementation((data: Partial<Image>) => data);
     repo.save.mockImplementation(async (data: Image) => ({
@@ -53,7 +53,7 @@ describe('ImagesService', () => {
     expect(result.key).toMatch(/^images\/.+\.png$/);
   });
 
-  it('remove borra de S3 y de BD cuando la imagen existe', async () => {
+  it('remove borra de disco y de BD cuando la imagen existe', async () => {
     repo.findOneBy.mockResolvedValue({ id: 'img-1', key: 'images/x.png' });
     const service = buildService();
 
