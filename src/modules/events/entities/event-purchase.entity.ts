@@ -82,6 +82,25 @@ export class EventPurchase {
   @Column({ type: 'timestamptz', nullable: true })
   expiresAt!: Date | null;
 
+  // Datos del pagador y archivos de la venta (archivado best-effort).
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  mpPayerId!: string | null;
+
+  @Column({ type: 'varchar', length: 180, nullable: true })
+  mpPayerName!: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  mpPaymentMethod!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  paidAt!: Date | null;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  ticketsFileKey!: string | null;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  receiptFileKey!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
