@@ -112,6 +112,13 @@ export class MercadoPagoService {
     };
   }
 
+  // Una fecha malformada de MP no debe tumbar el archivado: se trata como ausente.
+  private parseApprovedAt(value?: string | null): Date | null {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
   async getPayment(id: string): Promise<MpPaymentResult> {
     const res = await this.payment().get({ id });
     const status = res.status ?? 'unknown';
@@ -129,7 +136,7 @@ export class MercadoPagoService {
       details: {
         mpPaymentId: String(res.id),
         status,
-        approvedAt: res.date_approved ? new Date(res.date_approved) : null,
+        approvedAt: this.parseApprovedAt(res.date_approved),
         amount: res.transaction_amount ?? null,
         paymentMethodId: res.payment_method_id ?? null,
         paymentTypeId: res.payment_type_id ?? null,

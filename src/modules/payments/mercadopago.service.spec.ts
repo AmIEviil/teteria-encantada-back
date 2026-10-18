@@ -201,6 +201,21 @@ describe('MercadoPagoService', () => {
     });
   });
 
+  it('getPayment deja approvedAt en null si date_approved no es una fecha valida', async () => {
+    get.mockResolvedValue({
+      id: 79,
+      status: 'approved',
+      status_detail: 'accredited',
+      external_reference: 'purchase-79',
+      date_approved: 'not-a-date',
+    });
+    const svc = new MercadoPagoService();
+
+    const res = await svc.getPayment('79');
+
+    expect(res.details.approvedAt).toBeNull();
+  });
+
   it('getPayment deja en null los datos del pagador y la aprobación si MP no los trae', async () => {
     get.mockResolvedValue({
       id: 78,

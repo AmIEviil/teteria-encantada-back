@@ -38,6 +38,8 @@ async function bootstrap() {
   app.enableCors({
     origin: [process.env.FRONTEND_URL || ''],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    // Front y API son cross-origin: sin esto el navegador oculta el nombre del PDF.
+    exposedHeaders: ['Content-Disposition'],
     allowedHeaders: [
       'Content-Type',
       'Authorization',
