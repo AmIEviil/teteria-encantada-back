@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
+import { SalePaymentInfo } from '../sales-archive/sales-archive.types';
 
 // Líneas que MP muestra como detalle del pago en el panel del comercio
 // (additional_info.items). La suma de quantity * unitPrice debe dar el monto
@@ -32,6 +33,12 @@ export interface MpChargeResult {
   // MP puede devolver otros estados; los usados acá: approved | in_process | pending | rejected.
   status: string;
   statusDetail: string;
+}
+
+export interface MpPaymentResult extends MpChargeResult {
+  externalReference: string | null;
+  // Datos del pago y del pagador para el archivo de ventas.
+  details: SalePaymentInfo;
 }
 
 export interface MpPreferenceInput {
@@ -105,15 +112,36 @@ export class MercadoPagoService {
     };
   }
 
-  async getPayment(
-    id: string,
-  ): Promise<MpChargeResult & { externalReference: string | null }> {
+  async getPayment(id: string): Promise<MpPaymentResult> {
     const res = await this.payment().get({ id });
+    const status = res.status ?? 'unknown';
+    const payer = res.payer;
+    const payerName =
+      [payer?.first_name, payer?.last_name]
+        .map((part) => part?.trim() ?? '')
+        .filter((part) => part.length > 0)
+        .join(' ') || null;
     return {
       id: String(res.id),
-      status: res.status ?? 'unknown',
+      status,
       statusDetail: res.status_detail ?? '',
       externalReference: res.external_reference ?? null,
+      details: {
+        mpPaymentId: String(res.id),
+        status,
+        approvedAt: res.date_approved ? new Date(res.date_approved) : null,
+        amount: res.transaction_amount ?? null,
+        paymentMethodId: res.payment_method_id ?? null,
+        paymentTypeId: res.payment_type_id ?? null,
+        installments: res.installments ?? null,
+        // MP declara payer.id como string pero a veces lo entrega numérico.
+        payerId:
+          payer?.id !== undefined && payer?.id !== null
+            ? String(payer.id)
+            : null,
+        payerName,
+        payerEmail: payer?.email ?? null,
+      },
     };
   }
 

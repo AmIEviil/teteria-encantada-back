@@ -106,6 +106,7 @@ describe('PaymentsService', () => {
     buildTicketsPdf: jest.fn().mockResolvedValue(Buffer.from('PDF')),
   };
   const realtime = { emitEventPurchaseChanged: jest.fn() };
+  const archive = { archivePaidSale: jest.fn().mockResolvedValue(undefined) };
 
   const build = () =>
     new PaymentsService(
@@ -115,6 +116,7 @@ describe('PaymentsService', () => {
       mailer as any,
       pdf as any,
       realtime as any,
+      archive as any,
     );
 
   const basePayInput = {
@@ -133,6 +135,9 @@ describe('PaymentsService', () => {
   beforeEach(() => {
     purchaseRepo = makePurchaseRepo();
     jest.clearAllMocks();
+    // clearAllMocks no vacía las colas *Once: un rechazo no consumido no debe
+    // filtrarse al test siguiente.
+    archive.archivePaidSale.mockReset().mockResolvedValue(undefined);
   });
 
   describe('pay', () => {
@@ -822,6 +827,294 @@ describe('PaymentsService', () => {
       expect(wins.length).toBe(1);
       expect(events.createPublicTickets).toHaveBeenCalledTimes(1);
       expect(mailer.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('archivado de la venta tras el pago aprobado', () => {
+    const paymentDetails = (mpPaymentId: string) => ({
+      mpPaymentId,
+      status: 'approved',
+      approvedAt: new Date('2026-10-17T18:30:00.000Z'),
+      amount: 10000,
+      paymentMethodId: 'visa',
+      paymentTypeId: 'credit_card',
+      installments: 1,
+      payerId: '123456',
+      payerName: 'Ana Pérez',
+      payerEmail: 'ana@mail.cl',
+    });
+
+    const qrPendingPurchase = () =>
+      makePurchaseRepo({
+        eventId: 'e1',
+        buyerEmail: 'b@t.cl',
+        itemsSnapshot: [
+          {
+            ticketTypeId: 'tt1',
+            sessionId: null,
+            attendanceDate: '2026-08-01',
+            attendeeFirstName: 'A',
+            attendeeLastName: 'B',
+            menuSelection: null,
+          },
+        ],
+        status: EventPurchaseStatus.PENDING,
+        origin: EventPurchaseOrigin.ADMIN_QR,
+        mpPaymentId: null,
+      });
+
+    const revertCalls = () =>
+      (purchaseRepo.update as jest.Mock).mock.calls.filter(
+        ([criteria, patch]) =>
+          typeof criteria === 'object' &&
+          criteria !== null &&
+          Object.keys(criteria as object).length === 1 &&
+          (patch as Record<string, unknown>).status ===
+            EventPurchaseStatus.PENDING,
+      );
+
+    it('pay() aprobado: archiva una vez con la compra, el mismo PDF del correo, los datos del pago, el título y los tickets', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+        details: paymentDetails('mp1'),
+      });
+      const svc = build();
+
+      const res = await svc.pay('e1', basePayInput);
+
+      expect(res.status).toBe('approved');
+      expect(pdf.buildTicketsPdf).toHaveBeenCalledTimes(1);
+      expect(mp.getPayment).toHaveBeenCalledWith('mp1');
+      expect(archive.archivePaidSale).toHaveBeenCalledTimes(1);
+
+      const [purchase, ticketsPdf, payment, eventTitle, tickets] =
+        archive.archivePaidSale.mock.calls[0];
+      const mailedPdf = mailer.send.mock.calls[0][0].attachments[0].content;
+      expect(purchase).toEqual(
+        expect.objectContaining({ id: 'p1', mpPaymentId: 'mp1' }),
+      );
+      // El mismo buffer que se adjuntó al correo: el PDF no se genera dos veces.
+      expect(ticketsPdf).toBe(mailedPdf);
+      expect(ticketsPdf).toEqual(Buffer.from('PDF'));
+      expect(payment).toEqual(paymentDetails('mp1'));
+      expect(eventTitle).toBe('Ev');
+      expect(tickets).toBe(pdf.buildTicketsPdf.mock.calls[0][0]);
+
+      // Orden: correo → archivado → aviso en tiempo real.
+      const mailOrder = mailer.send.mock.invocationCallOrder[0];
+      const archiveOrder = archive.archivePaidSale.mock.invocationCallOrder[0];
+      const realtimeOrder =
+        realtime.emitEventPurchaseChanged.mock.invocationCallOrder[0];
+      expect(mailOrder).toBeLessThan(archiveOrder);
+      expect(archiveOrder).toBeLessThan(realtimeOrder);
+    });
+
+    it('webhook aprobado (ADMIN_QR): archiva con la compra que lleva el mpPaymentId del webhook', async () => {
+      purchaseRepo = qrPendingPurchase();
+      mp.getPayment.mockResolvedValue({
+        id: 'mp-wh-9',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+        details: paymentDetails('mp-wh-9'),
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp-wh-9');
+
+      expect(events.createPublicTickets).toHaveBeenCalledTimes(1);
+      expect(pdf.buildTicketsPdf).toHaveBeenCalledTimes(1);
+      expect(archive.archivePaidSale).toHaveBeenCalledTimes(1);
+
+      const [purchase, ticketsPdf, payment, eventTitle, tickets] =
+        archive.archivePaidSale.mock.calls[0];
+      const mailedPdf = mailer.send.mock.calls[0][0].attachments[0].content;
+      // La entidad leída antes del claim tiene mpPaymentId null: si se
+      // entregara tal cual, archivePaidSale no archivaría nada.
+      expect(purchase).toEqual(
+        expect.objectContaining({ id: 'p1', mpPaymentId: 'mp-wh-9' }),
+      );
+      expect(ticketsPdf).toBe(mailedPdf);
+      expect(payment).toEqual(paymentDetails('mp-wh-9'));
+      expect(eventTitle).toBe('Ev');
+      expect(tickets).toBe(pdf.buildTicketsPdf.mock.calls[0][0]);
+      expect(mp.getPayment).toHaveBeenLastCalledWith('mp-wh-9');
+    });
+
+    it('si mp.getPayment lanza durante el archivado, pay() igual entrega tickets y correo y archiva con payment null', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+      });
+      mp.getPayment.mockRejectedValueOnce(new Error('mp down'));
+      const svc = build();
+
+      const res = await svc.pay('e1', basePayInput);
+
+      expect(res.status).toBe('approved');
+      expect(res.purchase?.tickets.length).toBe(1);
+      expect(mailer.send).toHaveBeenCalledTimes(1);
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
+      expect(archive.archivePaidSale).toHaveBeenCalledTimes(1);
+      expect(archive.archivePaidSale.mock.calls[0][1]).toEqual(
+        Buffer.from('PDF'),
+      );
+      expect(archive.archivePaidSale.mock.calls[0][2]).toBeNull();
+      expect(revertCalls()).toHaveLength(0);
+    });
+
+    it('si buildTicketsPdf lanza: no hay correo, se archiva con ticketsPdf null y pay() igual devuelve approved', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+        details: paymentDetails('mp1'),
+      });
+      pdf.buildTicketsPdf.mockRejectedValueOnce(new Error('pdf roto'));
+      const svc = build();
+
+      const res = await svc.pay('e1', basePayInput);
+
+      expect(res.status).toBe('approved');
+      expect(res.purchase?.tickets.length).toBe(1);
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
+      expect(archive.archivePaidSale).toHaveBeenCalledTimes(1);
+      const [, ticketsPdf, payment, , tickets] =
+        archive.archivePaidSale.mock.calls[0];
+      expect(ticketsPdf).toBeNull();
+      expect(payment).toEqual(paymentDetails('mp1'));
+      expect(tickets).toBe(pdf.buildTicketsPdf.mock.calls[0][0]);
+      expect(revertCalls()).toHaveLength(0);
+    });
+
+    it('si no se pueden armar los datos del PDF (falla la lectura del evento), igual archiva con ticketsPdf null y sin tickets', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+        details: paymentDetails('mp1'),
+      });
+      events.findOne.mockRejectedValueOnce(new Error('db blip'));
+      const svc = build();
+
+      const res = await svc.pay('e1', basePayInput);
+
+      expect(res.status).toBe('approved');
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(pdf.buildTicketsPdf).not.toHaveBeenCalled();
+      expect(archive.archivePaidSale).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'p1', mpPaymentId: 'mp1' }),
+        null,
+        paymentDetails('mp1'),
+        'Ev',
+        [],
+      );
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
+    });
+
+    it('si archivePaidSale rechaza (bug que viola su contrato), pay() devuelve approved, no revierte a PENDING y avisa en tiempo real', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+        details: paymentDetails('mp1'),
+      });
+      archive.archivePaidSale.mockRejectedValueOnce(new Error('bug'));
+      const svc = build();
+
+      const res = await svc.pay('e1', basePayInput);
+
+      expect(res.status).toBe('approved');
+      expect(res.purchase?.tickets.length).toBe(1);
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
+      expect(revertCalls()).toHaveLength(0);
+      expect(realtime.emitEventPurchaseChanged).toHaveBeenCalledWith(
+        expect.objectContaining({ purchaseId: 'p1', status: 'PAID' }),
+      );
+    });
+
+    it('si archivePaidSale rechaza en el camino webhook, handleWebhook no lanza ni revierte la compra', async () => {
+      purchaseRepo = qrPendingPurchase();
+      mp.getPayment.mockResolvedValue({
+        id: 'mp-wh-9',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+        details: paymentDetails('mp-wh-9'),
+      });
+      archive.archivePaidSale.mockRejectedValueOnce(new Error('bug'));
+      const svc = build();
+
+      await expect(svc.handleWebhook('mp-wh-9')).resolves.toBeUndefined();
+
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PAID);
+      expect(revertCalls()).toHaveLength(0);
+      expect(realtime.emitEventPurchaseChanged).toHaveBeenCalledWith(
+        expect.objectContaining({ purchaseId: 'p1', status: 'PAID' }),
+      );
+    });
+
+    it('claim perdido (affected: 0): no archiva', async () => {
+      purchaseRepo = qrPendingPurchase();
+      (purchaseRepo.update as jest.Mock).mockResolvedValueOnce({
+        affected: 0,
+      });
+      mp.getPayment.mockResolvedValue({
+        id: 'mp-wh-9',
+        status: 'approved',
+        statusDetail: 'accredited',
+        externalReference: 'p1',
+        details: paymentDetails('mp-wh-9'),
+      });
+      const svc = build();
+
+      await svc.handleWebhook('mp-wh-9');
+
+      expect(events.createPublicTickets).not.toHaveBeenCalled();
+      expect(archive.archivePaidSale).not.toHaveBeenCalled();
+    });
+
+    it('si la emisión de tickets falla tras el claim, no archiva', async () => {
+      mp.charge.mockResolvedValue({
+        id: 'mp1',
+        status: 'approved',
+        statusDetail: 'accredited',
+      });
+      events.createPublicTickets.mockRejectedValueOnce(new Error('boom'));
+      const svc = build();
+
+      await expect(svc.pay('e1', basePayInput)).rejects.toThrow('boom');
+
+      expect(archive.archivePaidSale).not.toHaveBeenCalled();
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.PENDING);
     });
   });
 

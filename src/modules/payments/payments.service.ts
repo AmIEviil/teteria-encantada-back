@@ -26,6 +26,8 @@ import {
 } from '../tickets-pdf/tickets-pdf.service';
 import { MercadoPagoService, MpItem } from './mercadopago.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { SalesArchiveService } from '../sales-archive/sales-archive.service';
+import { SalePaymentInfo } from '../sales-archive/sales-archive.types';
 
 export interface PayEventInput {
   buyerEmail: string;
@@ -87,6 +89,7 @@ export class PaymentsService {
     private readonly mailer: MailerService,
     private readonly ticketsPdf: TicketsPdfService,
     private readonly realtime: RealtimeGateway,
+    private readonly salesArchive: SalesArchiveService,
   ) {}
 
   async pay(eventId: string, input: PayEventInput): Promise<PayEventResult> {
@@ -461,7 +464,13 @@ export class PaymentsService {
       throw err;
     }
 
-    await this.sendTicketsEmail(purchase, result);
+    // La entidad se leyó antes del claim: en el camino webhook (QR) todavía
+    // no tiene el mpPaymentId que el claim acaba de escribir. Sin resolverlo
+    // acá, el archivado vería null y no archivaría la venta.
+    await this.deliverTickets(
+      { ...purchase, mpPaymentId: mpPaymentId ?? purchase.mpPaymentId },
+      result,
+    );
 
     this.realtime.emitEventPurchaseChanged({
       purchaseId,
@@ -471,10 +480,16 @@ export class PaymentsService {
     return result;
   }
 
-  private async sendTicketsEmail(
+  // Entrega post-claim, en tres pasos independientes: (1) armar el PDF, (2)
+  // mandarlo por correo, (3) archivar la venta. Nada de esto puede fallar el
+  // pago: el cobro ya fue aprobado y los tickets ya existen, así que cada paso
+  // traga y registra su propio error y nunca revierte el claim.
+  private async deliverTickets(
     purchase: EventPurchase,
     result: PublicPurchaseResult,
   ): Promise<void> {
+    let pdfInputs: PdfTicketInput[] = [];
+    let pdf: Buffer | null = null;
     try {
       // Una sola consulta del evento (no una por ticket): evita N+1 y evita
       // el riesgo de resolver la plantilla por nombre de tipo (los nombres
@@ -500,7 +515,7 @@ export class PaymentsService {
         purchase.eventId,
       );
 
-      const pdfInputs: PdfTicketInput[] = result.tickets.map((t, index) => {
+      pdfInputs = result.tickets.map((t, index) => {
         const snapshotItem = purchase.itemsSnapshot[index];
         const customTemplateUrl = snapshotItem
           ? (templateUrlByTicketTypeId.get(snapshotItem.ticketTypeId) ?? null)
@@ -531,17 +546,58 @@ export class PaymentsService {
         };
       });
 
-      const pdf = await this.ticketsPdf.buildTicketsPdf(pdfInputs);
-      await this.mailer.send({
-        to: purchase.buyerEmail,
-        subject: `Tus tickets — ${result.eventTitle}`,
-        html: `<p>¡Gracias por tu compra! Adjuntamos ${result.tickets.length} ticket(s) para <b>${result.eventTitle}</b>.</p>`,
-        attachments: [{ filename: 'tickets.pdf', content: pdf }],
-      });
+      pdf = await this.ticketsPdf.buildTicketsPdf(pdfInputs);
     } catch (err) {
-      // El cobro ya fue aprobado y los tickets ya existen: un correo caído
-      // no debe hacer fallar la request ni revertir nada. Se registra y sigue.
-      this.logger.error(`Fallo enviando correo de tickets: ${String(err)}`);
+      this.logger.error(
+        `Fallo generando PDF de tickets de compra ${purchase.id}: ${String(err)}`,
+      );
+      pdf = null;
+    }
+
+    if (pdf) {
+      try {
+        await this.mailer.send({
+          to: purchase.buyerEmail,
+          subject: `Tus tickets — ${result.eventTitle}`,
+          html: `<p>¡Gracias por tu compra! Adjuntamos ${result.tickets.length} ticket(s) para <b>${result.eventTitle}</b>.</p>`,
+          attachments: [{ filename: 'tickets.pdf', content: pdf }],
+        });
+      } catch (err) {
+        // El cobro ya fue aprobado y los tickets ya existen: un correo caído
+        // no debe hacer fallar la request ni revertir nada. Se registra y sigue.
+        this.logger.error(`Fallo enviando correo de tickets: ${String(err)}`);
+      }
+    }
+
+    // Archivado best-effort. archivePaidSale no debería rechazar nunca, pero
+    // se protege igual: un bug ahí no puede llegar a pay()/webhook, revertir
+    // el claim ni frenar el aviso en tiempo real. Si MP no responde, se
+    // archiva sin comprobante ni datos del pagador (payment null).
+    try {
+      let payment: SalePaymentInfo | null = null;
+      if (purchase.mpPaymentId) {
+        try {
+          const mpPayment = await this.mercadoPago.getPayment(
+            purchase.mpPaymentId,
+          );
+          payment = mpPayment.details ?? null;
+        } catch (err) {
+          this.logger.warn(
+            `No se pudo leer el pago ${purchase.mpPaymentId} para archivar la compra ${purchase.id}: ${String(err)}`,
+          );
+        }
+      }
+      await this.salesArchive.archivePaidSale(
+        purchase,
+        pdf,
+        payment,
+        result.eventTitle,
+        pdfInputs,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Fallo archivando venta de compra ${purchase.id}: ${String(err)}`,
+      );
     }
   }
 

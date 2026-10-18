@@ -145,7 +145,104 @@ describe('MercadoPagoService', () => {
       status: 'unknown',
       statusDetail: '',
       externalReference: null,
+      details: {
+        mpPaymentId: '201',
+        status: 'unknown',
+        approvedAt: null,
+        amount: null,
+        paymentMethodId: null,
+        paymentTypeId: null,
+        installments: null,
+        payerId: null,
+        payerName: null,
+        payerEmail: null,
+      },
     });
+  });
+
+  it('getPayment mapea details con todos los campos del pago', async () => {
+    get.mockResolvedValue({
+      id: 77,
+      status: 'approved',
+      status_detail: 'accredited',
+      external_reference: 'purchase-77',
+      date_approved: '2026-10-17T15:30:00.000-03:00',
+      transaction_amount: 25000,
+      payment_method_id: 'visa',
+      payment_type_id: 'credit_card',
+      installments: 3,
+      // MP a veces entrega el id del pagador como número.
+      payer: {
+        id: 123456,
+        first_name: ' Ana ',
+        last_name: 'Pérez',
+        email: 'ana@mail.cl',
+      },
+    });
+    const svc = new MercadoPagoService();
+
+    const res = await svc.getPayment('77');
+
+    expect(res.id).toBe('77');
+    expect(res.status).toBe('approved');
+    expect(res.statusDetail).toBe('accredited');
+    expect(res.externalReference).toBe('purchase-77');
+    expect(res.details).toEqual({
+      mpPaymentId: '77',
+      status: 'approved',
+      approvedAt: new Date('2026-10-17T18:30:00.000Z'),
+      amount: 25000,
+      paymentMethodId: 'visa',
+      paymentTypeId: 'credit_card',
+      installments: 3,
+      payerId: '123456',
+      payerName: 'Ana Pérez',
+      payerEmail: 'ana@mail.cl',
+    });
+  });
+
+  it('getPayment deja en null los datos del pagador y la aprobación si MP no los trae', async () => {
+    get.mockResolvedValue({
+      id: 78,
+      status: 'approved',
+      status_detail: 'accredited',
+      external_reference: 'purchase-78',
+      transaction_amount: 10000,
+      payment_method_id: 'debvisa',
+      payment_type_id: 'debit_card',
+      installments: 1,
+    });
+    const svc = new MercadoPagoService();
+
+    const res = await svc.getPayment('78');
+
+    expect(res.details).toEqual({
+      mpPaymentId: '78',
+      status: 'approved',
+      approvedAt: null,
+      amount: 10000,
+      paymentMethodId: 'debvisa',
+      paymentTypeId: 'debit_card',
+      installments: 1,
+      payerId: null,
+      payerName: null,
+      payerEmail: null,
+    });
+  });
+
+  it('getPayment deja payerName en null si nombre y apellido vienen vacíos', async () => {
+    get.mockResolvedValue({
+      id: 79,
+      status: 'approved',
+      payer: { id: 'u-1', first_name: '  ', last_name: '', email: 'x@y.cl' },
+    });
+    const svc = new MercadoPagoService();
+
+    const res = await svc.getPayment('79');
+
+    expect(res.details.payerId).toBe('u-1');
+    expect(res.details.payerName).toBeNull();
+    expect(res.details.payerEmail).toBe('x@y.cl');
   });
 
   const preferenceInput = () => ({
