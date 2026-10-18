@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+} from '@nestjs/common';
 import { SYSTEM_ROLES } from '../auth/constants/system-roles.constant';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateQrCheckoutDto } from './dto/create-qr-checkout.dto';

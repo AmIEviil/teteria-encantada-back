@@ -26,10 +26,10 @@ const makePurchaseRepo = (initial?: Record<string, unknown>) => {
       return value;
     }),
     findOne: jest.fn(async () => (value ? { ...value } : null)),
-    find: jest.fn(
-      async (_query: { where: Record<string, unknown> }) =>
-        value ? [{ ...value }] : [],
-    ),
+    find: jest.fn<
+      Promise<Record<string, unknown>[]>,
+      [{ where: Record<string, unknown> }]
+    >(async () => (value ? [{ ...value }] : [])),
     update: jest.fn(
       async (
         criteria: Record<string, unknown> | string,
@@ -96,7 +96,11 @@ describe('PaymentsService', () => {
     }),
     getTicketSequences: jest.fn().mockResolvedValue(new Map([['t1', 1]])),
   };
-  const mp = { charge: jest.fn(), getPayment: jest.fn(), createPreference: jest.fn() };
+  const mp = {
+    charge: jest.fn(),
+    getPayment: jest.fn(),
+    createPreference: jest.fn(),
+  };
   const mailer = { send: jest.fn().mockResolvedValue(undefined) };
   const pdf = {
     buildTicketsPdf: jest.fn().mockResolvedValue(Buffer.from('PDF')),
@@ -1026,9 +1030,7 @@ describe('PaymentsService', () => {
 
       await svc.expireQrCheckouts();
 
-      expect(purchaseRepo.getValue()?.status).toBe(
-        EventPurchaseStatus.EXPIRED,
-      );
+      expect(purchaseRepo.getValue()?.status).toBe(EventPurchaseStatus.EXPIRED);
       expect(realtime.emitEventPurchaseChanged).toHaveBeenCalledWith({
         purchaseId: 'p1',
         eventId: 'e1',

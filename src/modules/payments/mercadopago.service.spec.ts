@@ -4,7 +4,9 @@ const preferenceCreate = jest.fn();
 jest.mock('mercadopago', () => ({
   MercadoPagoConfig: jest.fn(),
   Payment: jest.fn().mockImplementation(() => ({ create, get })),
-  Preference: jest.fn().mockImplementation(() => ({ create: preferenceCreate })),
+  Preference: jest
+    .fn()
+    .mockImplementation(() => ({ create: preferenceCreate })),
 }));
 
 import { MercadoPagoService } from './mercadopago.service';

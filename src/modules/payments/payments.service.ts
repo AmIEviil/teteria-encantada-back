@@ -180,9 +180,7 @@ export class PaymentsService {
       eventId,
       input.items,
     );
-    const expiresAt = new Date(
-      Date.now() + PaymentsService.QR_CHECKOUT_TTL_MS,
-    );
+    const expiresAt = new Date(Date.now() + PaymentsService.QR_CHECKOUT_TTL_MS);
 
     const purchase = await this.purchaseRepository.save(
       this.purchaseRepository.create({
@@ -613,7 +611,9 @@ export class PaymentsService {
     } catch (err) {
       // El webhook debe responder 200 igual: si falla el correo de alerta y
       // propagáramos, MP reintentaría el webhook en loop sin arreglar nada.
-      this.logger.error(`Fallo enviando alerta de pago sin tickets: ${String(err)}`);
+      this.logger.error(
+        `Fallo enviando alerta de pago sin tickets: ${String(err)}`,
+      );
     }
   }
 

@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddEventPurchaseQrCheckout1790000000000
-  implements MigrationInterface
-{
+export class AddEventPurchaseQrCheckout1790000000000 implements MigrationInterface {
   name = 'AddEventPurchaseQrCheckout1790000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
