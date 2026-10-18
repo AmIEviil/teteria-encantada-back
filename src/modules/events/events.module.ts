@@ -11,6 +11,7 @@ import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
 
 import { MailerModule } from '../mailer/mailer.module';
+import { SalesArchiveModule } from '../sales-archive/sales-archive.module';
 import { TicketsPdfModule } from '../tickets-pdf/tickets-pdf.module';
 
 @Module({
@@ -26,6 +27,7 @@ import { TicketsPdfModule } from '../tickets-pdf/tickets-pdf.module';
     ]),
     MailerModule,
     TicketsPdfModule,
+    SalesArchiveModule,
   ],
   controllers: [EventsController],
   providers: [EventsService],
