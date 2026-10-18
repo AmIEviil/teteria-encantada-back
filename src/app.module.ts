@@ -17,6 +17,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { EventPurchasesModule } from './modules/event-purchases/event-purchases.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     ScheduleModule.forRoot(),
     RealtimeModule,
     PaymentsModule,
+    EventPurchasesModule,
   ],
   controllers: [AppController],
   providers: [
