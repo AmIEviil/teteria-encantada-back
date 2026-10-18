@@ -46,6 +46,7 @@ import {
 } from './entities/event-purchase.entity';
 import { MailerService } from '../mailer/mailer.service';
 import { TicketsPdfService } from '../tickets-pdf/tickets-pdf.service';
+import { SalesArchiveService } from '../sales-archive/sales-archive.service';
 
 interface NormalizedMenuOption {
   id: string;
@@ -213,6 +214,7 @@ export class EventsService {
     private readonly purchaseRepository: Repository<EventPurchase>,
     private readonly mailerService: MailerService,
     private readonly ticketsPdfService: TicketsPdfService,
+    private readonly salesArchiveService: SalesArchiveService,
   ) {}
 
   async create(createEventDto: CreateEventDto): Promise<Event> {
@@ -990,16 +992,31 @@ export class EventsService {
       };
     });
 
+    let pdf: Buffer | null = null;
     try {
-      const pdf = await this.ticketsPdfService.buildTicketsPdf(pdfInputs);
-      await this.mailerService.send({
-        to: purchase.buyerEmail,
-        subject: `Tus tickets — ${result.eventTitle}`,
-        html: `<p>¡Gracias por tu compra! Adjuntamos ${result.tickets.length} ticket(s) para <b>${result.eventTitle}</b>.</p>`,
-        attachments: [{ filename: 'tickets.pdf', content: pdf }],
-      });
+      pdf = await this.ticketsPdfService.buildTicketsPdf(pdfInputs);
     } catch (err) {
-      console.error('Fallo enviando correo de tickets internos:', err);
+      console.error('Fallo generando PDF de tickets internos:', err);
+    }
+
+    if (pdf) {
+      try {
+        await this.mailerService.send({
+          to: purchase.buyerEmail,
+          subject: `Tus tickets — ${result.eventTitle}`,
+          html: `<p>¡Gracias por tu compra! Adjuntamos ${result.tickets.length} ticket(s) para <b>${result.eventTitle}</b>.</p>`,
+          attachments: [{ filename: 'tickets.pdf', content: pdf }],
+        });
+      } catch (err) {
+        console.error('Fallo enviando correo de tickets internos:', err);
+      }
+
+      // El archivado se intenta aunque el correo falle.
+      await this.salesArchiveService
+        .archiveManualSale(purchase, pdf)
+        .catch((err) =>
+          console.error('Fallo archivando venta manual de entradas:', err),
+        );
     }
 
     return result;

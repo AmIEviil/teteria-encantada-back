@@ -12,3 +12,11 @@ export const lastDayOfMonth = (mes: string): string => {
 
   return `${mes}-${String(lastDay).padStart(2, '0')}`;
 };
+
+// 'sv-SE' con year+month da 'YYYY-MM'; sirve para agrupar por mes de negocio.
+export const monthInSantiago = (date: Date): string =>
+  new Intl.DateTimeFormat('sv-SE', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+  }).format(date);

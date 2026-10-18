@@ -4,9 +4,12 @@ import { EventPurchase } from '../events/entities/event-purchase.entity';
 import { EventsModule } from '../events/events.module';
 import { MailerModule } from '../mailer/mailer.module';
 import { TicketsPdfModule } from '../tickets-pdf/tickets-pdf.module';
+import { RealtimeModule } from '../realtime/realtime.module';
+import { SalesArchiveModule } from '../sales-archive/sales-archive.module';
 import { MercadoPagoService } from './mercadopago.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { QrCheckoutController } from './qr-checkout.controller';
 
 @Module({
   imports: [
@@ -14,8 +17,10 @@ import { PaymentsService } from './payments.service';
     EventsModule,
     MailerModule,
     TicketsPdfModule,
+    RealtimeModule,
+    SalesArchiveModule,
   ],
-  controllers: [PaymentsController],
+  controllers: [PaymentsController, QrCheckoutController],
   providers: [PaymentsService, MercadoPagoService],
 })
 export class PaymentsModule {}

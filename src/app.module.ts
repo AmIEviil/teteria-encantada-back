@@ -17,11 +17,17 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { EventPurchasesModule } from './modules/event-purchases/event-purchases.module';
 
 @Module({
   imports: [
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60000, limit: 100 }],
+      throttlers: [
+        {
+          ttl: Number(process.env.THROTTLE_TTL ?? 60000),
+          limit: Number(process.env.THROTTLE_LIMIT ?? 100),
+        },
+      ],
     }),
     TypeOrmModule.forRoot({
       type: 'postgres',
@@ -54,6 +60,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     ScheduleModule.forRoot(),
     RealtimeModule,
     PaymentsModule,
+    EventPurchasesModule,
   ],
   controllers: [AppController],
   providers: [

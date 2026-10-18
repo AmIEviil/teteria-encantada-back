@@ -7,7 +7,7 @@ import {
   StandardFonts,
   rgb,
 } from 'pdf-lib';
-import { S3StorageService } from '../images/storage/s3-storage.service';
+import { DiskStorageService } from '../images/storage/disk-storage.service';
 
 export interface PdfTicketInput {
   eventTitle: string;
@@ -66,7 +66,7 @@ const MARGIN = 48;
 export class TicketsPdfService {
   private readonly logger = new Logger(TicketsPdfService.name);
 
-  constructor(private readonly storage: S3StorageService) {}
+  constructor(private readonly storage: DiskStorageService) {}
 
   async buildTicketsPdf(tickets: PdfTicketInput[]): Promise<Buffer> {
     const doc = await PDFDocument.create();

@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Image } from './entities/image.entity';
-import { S3StorageService } from './storage/s3-storage.service';
+import { DiskStorageService } from './storage/disk-storage.service';
 
 export interface UploadableFile {
   buffer: Buffer;
@@ -18,7 +18,7 @@ export class ImagesService {
   constructor(
     @InjectRepository(Image)
     private readonly imageRepository: Repository<Image>,
-    private readonly storage: S3StorageService,
+    private readonly storage: DiskStorageService,
   ) {}
 
   async upload(file: UploadableFile): Promise<Image> {

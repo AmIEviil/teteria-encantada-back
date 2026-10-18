@@ -11,6 +11,17 @@ export enum EventPurchaseStatus {
   PENDING = 'PENDING',
   PAID = 'PAID',
   REJECTED = 'REJECTED',
+  // Ventana del QR vencida sin pago (la fija el cron de PaymentsService).
+  EXPIRED = 'EXPIRED',
+  // El operador abortó el cobro desde el modal.
+  CANCELLED = 'CANCELLED',
+}
+
+// Distingue el flujo que originó la compra. Lo usa el cron de expiración para
+// no tocar las compras del sitio público, que no tienen ventana de tiempo.
+export enum EventPurchaseOrigin {
+  PUBLIC = 'PUBLIC',
+  ADMIN_QR = 'ADMIN_QR',
 }
 
 // Snapshot mínimo de un item del carrito, suficiente para recrear el ticket.
@@ -54,6 +65,41 @@ export class EventPurchase {
 
   @Column({ type: 'varchar', length: 80, nullable: true })
   mpPaymentId!: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: EventPurchaseOrigin,
+    default: EventPurchaseOrigin.PUBLIC,
+  })
+  origin!: EventPurchaseOrigin;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  mpPreferenceId!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  checkoutUrl!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  expiresAt!: Date | null;
+
+  // Datos del pagador y archivos de la venta (archivado best-effort).
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  mpPayerId!: string | null;
+
+  @Column({ type: 'varchar', length: 180, nullable: true })
+  mpPayerName!: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  mpPaymentMethod!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  paidAt!: Date | null;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  ticketsFileKey!: string | null;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  receiptFileKey!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

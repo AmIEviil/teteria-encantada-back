@@ -15,6 +15,10 @@ import { EventTicket, EventTicketStatus } from './entities/event-ticket.entity';
 import { EventTicketTypeDailyStock } from './entities/event-ticket-type-daily-stock.entity';
 import { EventSession } from './entities/event-session.entity';
 import { EventSessionTicketAllocation } from './entities/event-session-ticket-allocation.entity';
+import { EventPurchase } from './entities/event-purchase.entity';
+import { MailerService } from '../mailer/mailer.service';
+import { TicketsPdfService } from '../tickets-pdf/tickets-pdf.service';
+import { SalesArchiveService } from '../sales-archive/sales-archive.service';
 
 type AnyRepo = Record<string, jest.Mock> & { manager?: unknown };
 
@@ -192,6 +196,16 @@ describe('EventsService', () => {
           useValue: dailyStockRepo,
         },
         { provide: getRepositoryToken(EventTicket), useValue: ticketRepo },
+        { provide: getRepositoryToken(EventPurchase), useValue: {} },
+        { provide: MailerService, useValue: { send: jest.fn() } },
+        {
+          provide: TicketsPdfService,
+          useValue: { buildTicketsPdf: jest.fn() },
+        },
+        {
+          provide: SalesArchiveService,
+          useValue: { archiveManualSale: jest.fn() },
+        },
       ],
     }).compile();
 
